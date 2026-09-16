@@ -15,3 +15,4 @@ backend/metrics_log.jsonl
 # Java build output
 cs-service/target/
 
+_design-refs/

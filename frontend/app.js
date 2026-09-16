@@ -5,6 +5,7 @@ const chipsEl = document.getElementById("chips");
 const attachBtn = document.getElementById("attach-btn");
 const fileInput = document.getElementById("file-input");
 const attachmentPreviewEl = document.getElementById("attachment-preview");
+const fillFormBtn = document.getElementById("fill-form-btn");
 const micBtn = document.getElementById("mic-btn");
 const humanBtn = document.getElementById("human-btn");
 const langToggleEl = document.getElementById("lang-toggle");
@@ -588,6 +589,12 @@ function addForm(form) {
   const wrapper = document.createElement("form");
   wrapper.className = "inline-form";
 
+  if (form.title) {
+    const title = document.createElement("h3");
+    title.textContent = form.title;
+    wrapper.appendChild(title);
+  }
+
   const values = {};
   for (const field of form.fields) {
     const fieldEl = document.createElement("div");
@@ -620,7 +627,11 @@ function addForm(form) {
     } else {
       const input = document.createElement("input");
       input.type = "text";
-      input.required = true;
+      input.required = field.required !== false;
+      if (field.value !== null && field.value !== undefined) {
+        input.value = String(field.value);
+        values[field.name] = input.value;
+      }
       if (field.placeholder) input.placeholder = field.placeholder;
       input.addEventListener("input", () => {
         values[field.name] = input.value;
@@ -642,7 +653,7 @@ function addForm(form) {
 
   wrapper.addEventListener("submit", (e) => {
     e.preventDefault();
-    const missing = form.fields.filter((f) => !values[f.name]);
+    const missing = form.fields.filter((f) => f.required !== false && !values[f.name]);
     if (missing.length) {
       errorEl.textContent = "Please fill in all fields before submitting.";
       return;
@@ -767,6 +778,8 @@ function formatFileSize(bytes) {
 
 function renderAttachmentPreview(status = "") {
   attachmentPreviewEl.innerHTML = "";
+  fillFormBtn.hidden = !stagedFiles.length;
+  fillFormBtn.disabled = !stagedFiles.length;
   if (!stagedFiles.length && !status) {
     attachmentPreviewEl.hidden = true;
     return;
@@ -846,7 +859,7 @@ function buildMessageText(text, attachments) {
 
   for (const attachment of attachments) {
     const extractedText = attachment.text || "No readable text was extracted from this file.";
-    parts.push(`[Attached file: ${attachment.filename}]\n\n${extractedText}`);
+    parts.push(`[Attached document: ${attachment.filename}]\n\n${extractedText}`);
   }
 
   return parts.join("\n\n");
@@ -864,7 +877,12 @@ function setComposerBusy(busy) {
   sendBtn.disabled = busy;
   attachBtn.disabled = busy;
   micBtn.disabled = busy;
+  fillFormBtn.disabled = busy || !stagedFiles.length;
 }
+
+fillFormBtn.addEventListener("click", () => {
+  sendMessage("Fill the form", stagedFiles.slice());
+});
 
 async function sendMessage(text, files = []) {
   const textToSend = text.trim();
@@ -1121,6 +1139,8 @@ function resetChatView() {
   stagedFiles = [];
   attachmentPreviewEl.hidden = true;
   attachmentPreviewEl.innerHTML = "";
+  fillFormBtn.hidden = true;
+  fillFormBtn.disabled = true;
   inputEl.value = "";
   inputEl.style.height = "auto";
   humanBtn.disabled = false;
