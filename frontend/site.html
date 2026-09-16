@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,17 +8,26 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="site.css" />
 </head>
+
 <body class="site-body">
+  <div class="utility-bar">
+    <div class="utility-links">
+      <a href="#support">Kundservice</a>
+      <a href="#login">Logga in</a>
+      <a href="#become-customer">Bli kund</a>
+    </div>
+  </div>
   <header class="site-nav">
     <div class="site-logo">
       <span class="site-logo-mark">LF</span>
       <span class="site-logo-text">Bergslagen</span>
     </div>
     <nav class="site-links">
-      <a href="#loans">Loans &amp; Mortgages</a>
-      <a href="#insurance">Insurance</a>
-      <a href="#pension">Pension &amp; Savings</a>
-      <a href="#become-customer">Become a customer</a>
+      <a href="#insurance">Försäkringar</a>
+      <a href="#bank">Bank</a>
+      <a href="#pension">Pension</a>
+      <a href="#about">Om oss</a>
+      <a href="#support">Kontakta oss</a>
     </nav>
     <button id="nav-chat-btn" class="site-nav-cta" type="button">💬 Chat with Sara</button>
   </header>
@@ -36,15 +46,79 @@
           <a href="#life-moments" class="btn btn-secondary">See what we help with</a>
         </div>
       </div>
-      <div class="hero-art" aria-hidden="true">
-        <div class="hero-card">
-          <span class="hero-card-avatar">S</span>
-          <div>
-            <strong>Sara · AI assistant</strong>
-            <p>"Tell me what's changing in your life, and I'll help you think it through."</p>
-          </div>
-        </div>
+      <div class="hero-art">
+        <svg class="hero-illustration" viewBox="0 0 600 400" role="img"
+          aria-labelledby="hero-illustration-title hero-illustration-desc">
+          <title id="hero-illustration-title">Trygghet i vardagen</title>
+          <desc id="hero-illustration-desc">En linjeteckning med hus, paraply över två personer, cykel, träd, sol, moln
+            och dokument.</desc>
+          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+            <circle cx="500" cy="72" r="27" />
+            <path d="M500 31v-12M500 113v12M459 72h-12M541 72h12M471 43l-9-9M529 43l9-9M471 101l-9 9M529 101l9 9" />
+            <path d="M420 102c12-18 36-18 48 0 15-12 39-3 41 15h-101c0-12 5-15 12-15z" />
+
+            <path d="M42 262L112 198l70 64M61 246v91h102v-91M97 337v-54h30v54M78 268h25v24H78zM133 268h25v24h-25z" />
+            <path d="M30 337h178M112 198v-22M105 176h14" />
+
+            <path d="M246 196c20-34 57-53 102-53s82 19 102 53H246z" />
+            <path d="M271 196c8 13 21 20 35 20s27-7 35-20c8 13 21 20 35 20s27-7 35-20c8 13 21 20 35 20s27-7 35-20" />
+            <path d="M348 143v-23M348 120c-5-8-4-15 3-20 7 5 8 12 3 20" />
+            <circle cx="319" cy="258" r="13" />
+            <path d="M319 271v43M319 282l-18 18M319 282l19 15M319 314l-15 27M319 314l17 27" />
+            <circle cx="376" cy="258" r="13" />
+            <path d="M376 271v43M376 282l-17 15M376 282l19 18M376 314l-16 27M376 314l17 27" />
+
+            <circle cx="475" cy="315" r="31" />
+            <circle cx="552" cy="315" r="31" />
+            <path d="M475 315l31-45 46 45M506 270h28M506 270l-8-18M537 315l-31-45M475 315h-22M552 315h20" />
+            <path d="M453 315a22 22 0 0 1 43-8M530 307a22 22 0 0 1 43 8" />
+
+            <path
+              d="M225 337c-8-34-4-65 15-89M240 337c4-39 17-67 37-85M211 282c-10-10-12-22-5-35 16 2 23 12 19 26M256 274c3-15 12-24 27-27 5 15-1 27-14 33" />
+            <path d="M210 337h47M219 337c-2-23 1-43 10-60M250 337c1-20 8-38 21-53" />
+
+            <path d="M183 105h48v64h-48zM183 105l24-18 24 18M195 124h24M195 137h30M195 150h18" />
+            <path d="M204 115h8" />
+
+            <path d="M28 356h544" />
+          </g>
+        </svg>
       </div>
+    </section>
+
+    <section class="popular" aria-labelledby="popular-title">
+      <div class="section-heading">
+        <span class="section-kicker">För dig och din vardag</span>
+        <h2 id="popular-title">Populärt</h2>
+      </div>
+      <div class="popular-grid">
+        <a class="popular-card" href="#insurance">
+          <span class="popular-icon" aria-hidden="true">🏠</span>
+          <span class="popular-card-title">Hemförsäkring</span>
+          <span class="popular-card-copy">Säkra hemmet med smart teknik</span>
+        </a>
+        <a class="popular-card" href="#insurance">
+          <span class="popular-icon" aria-hidden="true">🚗</span>
+          <span class="popular-card-title">Bilförsäkring</span>
+          <span class="popular-card-copy">Trygghet på vägen</span>
+        </a>
+        <a class="popular-card" href="#bank">
+          <span class="popular-icon" aria-hidden="true">🏦</span>
+          <span class="popular-card-title">Bolån</span>
+          <span class="popular-card-copy">Räkna på din boendekostnad</span>
+        </a>
+        <a class="popular-card" href="#pension">
+          <span class="popular-icon" aria-hidden="true">💰</span>
+          <span class="popular-card-title">Sparande</span>
+          <span class="popular-card-copy">Planera för framtiden</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="about" class="welcome-section">
+      <h2>Välkommen till LF Bergslagen</h2>
+      <p>LF Bergslagen är ett lokalt och kundägt bolag med allt samlat under samma tak – försäkring, bank och pension.
+        Våra medarbetare finns nära till hands för snabb hjälp och personlig rådgivning.</p>
     </section>
 
     <section id="life-moments" class="life-moments">
@@ -52,82 +126,66 @@
       <p class="section-sub">Tap one below to start a chat with Sara about it.</p>
       <div class="moment-grid">
         <button class="moment-card" data-text="I'd like help with buying a house">🏠<span>Buying a house</span></button>
-        <button class="moment-card" data-text="My partner and I are moving in together">🏡<span>Moving in together</span></button>
+        <button class="moment-card" data-text="My partner and I are moving in together">🏡<span>Moving in
+            together</span></button>
         <button class="moment-card" data-text="We're having a baby soon">👶<span>Having a child</span></button>
         <button class="moment-card" data-text="I'm going through a divorce">📄<span>Divorce</span></button>
         <button class="moment-card" data-text="I'm starting my own business">💼<span>Starting a business</span></button>
         <button class="moment-card" data-text="I'm retiring soon">🌅<span>Retirement</span></button>
-        <button class="moment-card" data-text="I'd like help with buying a holiday home">🏖️<span>Holiday home</span></button>
+        <button class="moment-card" data-text="I'd like help with buying a holiday home">🏖️<span>Holiday
+            home</span></button>
         <button class="moment-card" data-text="I'd like help with buying a car">🚗<span>Buying a car</span></button>
       </div>
     </section>
 
-    <section id="loans" class="products">
+    <section id="bank" class="products">
       <div class="product-col">
-        <h3>Loans &amp; Mortgages</h3>
+        <h3>Bank</h3>
         <ul>
-          <li>Home loans &amp; mortgages</li>
-          <li>Holiday home financing</li>
-          <li>Car loans</li>
-          <li>Loan &amp; interest calculators</li>
+          <li>Bolån och finansiering</li>
+          <li>Betalningar och kort</li>
+          <li>Banktjänster</li>
+          <li>Räkna på lån och ränta</li>
         </ul>
       </div>
       <div class="product-col" id="insurance">
-        <h3>Insurance</h3>
+        <h3>Försäkringar</h3>
         <ul>
-          <li>Home insurance</li>
-          <li>Car insurance</li>
-          <li>Life insurance</li>
-          <li>Child &amp; family insurance</li>
-          <li>Accident &amp; health insurance</li>
-          <li>Loan protection insurance</li>
+          <li>Hemförsäkring</li>
+          <li>Bilförsäkring</li>
+          <li>Livförsäkring</li>
+          <li>Barn- och familjeförsäkring</li>
+          <li>Olycksfalls- och sjukförsäkring</li>
+          <li>Bolåneskydd</li>
         </ul>
       </div>
       <div class="product-col" id="pension">
-        <h3>Pension &amp; Savings</h3>
+        <h3>Pension</h3>
         <ul>
-          <li>Retirement planning</li>
-          <li>Savings accounts</li>
-          <li>Fund &amp; pension advice</li>
+          <li>Pensionsplanering</li>
+          <li>Sparkonton</li>
+          <li>Fond- och pensionsrådgivning</li>
         </ul>
       </div>
     </section>
 
     <section id="become-customer" class="cta-band">
       <div>
-        <h2>New to LF Bergslagen?</h2>
-        <p>Ask Sara what becoming a customer involves, or request a callback from a local advisor.</p>
+        <h2>Ny kund hos LF Bergslagen?</h2>
+        <p>Fråga Sara vad det innebär att bli kund eller be en lokal rådgivare ringa upp dig.</p>
       </div>
-      <button class="btn btn-primary cta-band-btn" type="button" data-text="I'd like to become a customer">💬 Ask Sara</button>
+      <button class="btn btn-primary cta-band-btn" type="button" data-text="I'd like to become a customer">💬 Ask
+        Sara</button>
     </section>
   </main>
 
   <footer class="site-footer">
-    <div class="footer-cols">
-      <div>
-        <div class="site-logo">
-          <span class="site-logo-mark">LF</span>
-          <span class="site-logo-text">Bergslagen</span>
-        </div>
-        <p class="footer-blurb">Local, member-focused financial services — now with an AI assistant to help you through life's transitions.</p>
-      </div>
-      <div>
-        <strong>Company</strong>
-        <a href="#">About us</a>
-        <a href="#">Careers</a>
-        <a href="#">Sustainability</a>
-      </div>
-      <div>
-        <strong>Support</strong>
-        <a href="#" id="footer-chat-link">Chat with Sara</a>
-        <a href="#">Find an office</a>
-        <a href="/dashboard.html">Advisor dashboard</a>
-      </div>
-    </div>
-    <p class="footer-disclaimer">
-      This is a demo prototype built for an AI-agent hackathon and is not the
-      official Länsförsäkringar Bergslagen website.
-    </p>
+    <span>© 2026 Länsförsäkringar Bergslagen</span>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="#">Cookie-inställningar</a>
+      <a href="#">Personuppgiftspolicy</a>
+      <a href="#support" id="footer-chat-link">Kontakta oss</a>
+    </nav>
   </footer>
 
   <div id="chat-widget" class="chat-widget" hidden>
@@ -145,4 +203,5 @@
 
   <script src="site.js"></script>
 </body>
+
 </html>

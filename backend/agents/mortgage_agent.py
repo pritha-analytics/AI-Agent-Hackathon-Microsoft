@@ -698,6 +698,62 @@ def _stringify_extra(value) -> str:
     return str(value)
 
 
+def _build_document_form(extraction: dict | None) -> dict | None:
+    """Turn extracted document data into editable fields for the customer."""
+    if not extraction:
+        return None
+
+    sections = [
+        (
+            "Purchase agreement",
+            extraction.get("purchase_agreement"),
+            [
+                ("property_address", "Property address"),
+                ("purchase_price_sek", "Purchase price (SEK)"),
+                ("buyer_name", "Buyer name"),
+                ("seller_name", "Seller name"),
+                ("closing_date", "Closing date"),
+            ],
+        ),
+        (
+            "Income statement",
+            extraction.get("income_statement"),
+            [
+                ("employer", "Employer"),
+                ("monthly_gross_income_sek", "Monthly gross income (SEK)"),
+                ("employment_type", "Employment type"),
+                ("employment_start_date", "Employment start date"),
+            ],
+        ),
+        (
+            "Monthly expenses",
+            extraction.get("expenses"),
+            [("monthly_expenses_total_sek", "Total monthly expenses (SEK)")],
+        ),
+    ]
+    fields = []
+    for section_label, values, field_specs in sections:
+        if not values:
+            continue
+        for name, label in field_specs:
+            value = values.get(name)
+            fields.append({
+                "name": name,
+                "label": f"{section_label}: {label}",
+                "type": "text",
+                "value": "" if value is None else value,
+                "required": False,
+            })
+
+    if not fields:
+        return None
+    return {
+        "type": "document_application",
+        "title": "Application details from uploaded documents",
+        "fields": fields,
+    }
+
+
 def _audit_history_summary(customer_id: str | None) -> str:
     """Compact trail of every agent decision recorded for this customer so
     far - the "Audit History of the agent actions/policies/calculations
@@ -956,7 +1012,8 @@ def run_loan_promise_agent(history: list[dict], lang: str | None = None) -> tupl
     last_user_message = next(
         (m.get("content", "") for m in reversed(history) if m.get("role") == "user"), ""
     )
-    return reply, generate_suggestions(last_user_message, reply), {}
+    extra = {"form": _build_document_form(last_extraction)} if last_extraction else {}
+    return reply, generate_suggestions(last_user_message, reply), extra
 
 
 def run_loan_offer_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[str], dict]:
@@ -1132,4 +1189,5 @@ def run_loan_offer_agent(history: list[dict], lang: str | None = None) -> tuple[
     last_user_message = next(
         (m.get("content", "") for m in reversed(history) if m.get("role") == "user"), ""
     )
-    return reply, generate_suggestions(last_user_message, reply), {}
+    extra = {"form": _build_document_form(last_extraction)} if last_extraction else {}
+    return reply, generate_suggestions(last_user_message, reply), extra

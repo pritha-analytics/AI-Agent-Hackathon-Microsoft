@@ -1,17 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Life Transition Navigator</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <header class="topbar">
     <div class="topbar-left">
-      <button id="sidebar-show-btn" class="sidebar-toggle-btn topbar-sidebar-toggle" type="button" title="Show previous chats" hidden>☰</button>
+      <button id="sidebar-show-btn" class="sidebar-toggle-btn topbar-sidebar-toggle" type="button"
+        title="Show previous chats" hidden>☰</button>
       <div class="brand" id="home-btn" role="button" tabindex="0" title="Start a new chat">
-        <span class="avatar avatar-ai">S</span>
+        <img class="brand-logo" src="lf-logo.png" alt="LF Bergslagen" />
+        <span class="avatar avatar-ai"><img src="chatbot-icon.png" alt="Sara AI assistant icon" /></span>
         <div class="brand-text">
           <span class="brand-name">Sara</span>
           <span class="brand-sub">Digital assistant · LF Bergslagen</span>
@@ -40,13 +44,17 @@
       <div id="messages" class="messages">
         <div class="msg assistant">
           <span class="msg-label" id="greeting-label">Sara · AI assistant</span>
-          <p id="greeting-text">Hej! I'm Sara, LF Bergslagen's digital assistant. Tell me what's changing in your life, and I'll help you think it through.</p>
+          <p id="greeting-text">Hej! I'm Sara, LF Bergslagen's digital assistant. Tell me what's changing in your life,
+            and I'll help you think it through.</p>
         </div>
       </div>
 
       <div id="chips" class="chips"></div>
 
       <div id="attachment-preview" class="attachment-preview" hidden></div>
+      <button id="fill-form-btn" class="fill-form-btn" type="button" hidden disabled>
+        Fill Form
+      </button>
 
       <div id="rating-bar" class="rating-bar" hidden>
         <span class="rating-label" id="rating-label"></span>
@@ -57,7 +65,8 @@
         <input id="file-input" type="file" accept=".pdf,.txt,.doc,.docx,.xls,.xlsx,image/*" multiple hidden />
         <button id="attach-btn" class="icon-btn" type="button" title="Attach a document">📎</button>
         <button id="mic-btn" class="icon-btn" type="button" title="Speak instead of typing" hidden>🎤</button>
-        <textarea id="chat-input" rows="1" placeholder="Tell me what's happening in your life..." autocomplete="off"></textarea>
+        <textarea id="chat-input" rows="1" placeholder="Tell me what's happening in your life..."
+          autocomplete="off"></textarea>
         <button id="send-btn" type="submit">Send</button>
       </form>
     </main>
@@ -65,4 +74,5 @@
 
   <script src="app.js"></script>
 </body>
+
 </html>

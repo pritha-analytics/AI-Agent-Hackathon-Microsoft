@@ -1,3 +1,4 @@
+import json
 import re
 import unicodedata
 from pathlib import Path
@@ -27,6 +28,34 @@ MAX_CHARS = 6000
 MAX_LINKS = 6
 TIMEOUT_SECONDS = 10
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
+DEFAULT_CUSTOMER_FORM_FIELDS = (
+    ("full_name", "Full name", ("Full name", "Namn", "Fullständigt namn", "full_name", "namn")),
+    ("personnummer", "Personal ID number", ("Personnummer", "Personal ID number", "Personal number", "SSN", "personnummer")),
+    ("date_of_birth", "Date of birth", ("Date of birth", "Födelsedatum", "Född", "DOB", "date_of_birth")),
+    ("address", "Address", ("Address", "Adress", "Gatuadress", "address", "adress")),
+    ("postnummer", "Postal code", ("Postnummer", "Postal code", "Postcode", "Zip code", "postnummer")),
+    ("ort", "City", ("Ort", "City", "Town", "ort", "city")),
+    ("phone", "Phone", ("Phone", "Telefon", "Tel", "Mobile", "phone", "telefon")),
+    ("email", "Email", ("Email", "E-mail", "Epost", "E-post", "email")),
+    ("boendeform", "Type of housing", ("Boendeform", "Type of housing", "Housing type", "boendeform")),
+    ("bostadsyta", "Living area (sqm)", ("Bostadsyta", "Living area (sqm)", "Living area", "Area", "bostadsyta")),
+    ("antal_rum", "Number of rooms", ("Antal rum", "Number of rooms", "Rooms", "antal_rum")),
+    ("byggnadsar", "Year built", ("Byggnadsår", "Year built", "Year of construction", "byggnadsar")),
+    ("bostadens_varde", "Property value", ("Bostadens värde", "Value of movable property (SEK)", "Value", "bostadens_varde")),
+    ("forsakringstyp", "Insurance type", ("Försäkringstyp", "Type of insurance", "Insurance type", "forsakringstyp")),
+    ("onskat_tillagg_1", "Additional cover 1", ("Önskat tillägg 1", "Additional all-risk for movable property", "Additional cover 1", "onskat_tillagg_1")),
+    ("onskat_tillagg_2", "Additional cover 2", ("Önskat tillägg 2", "Additional extended travel protection", "Additional cover 2", "onskat_tillagg_2")),
+    ("forsakringen_startar", "Desired start date", ("Försäkringen önskas starta", "Desired start date", "Start date", "forsakringen_startar")),
+    ("employer", "Employer", ("Employer", "Arbetsgivare", "employer", "arbetsgivare")),
+    ("job_title", "Job title", ("Job title", "Yrke", "job title", "yrke")),
+    ("annual_income", "Annual income", ("Annual income", "Årsinkomst", "annual income", "årsinkomst")),
+    ("loan_amount", "Loan amount", ("Loan amount", "Lånebelopp", "loan amount", "lånebelopp")),
+    ("property_address", "Property address", ("Property address", "Fastighetsadress", "property address", "fastighetsadress")),
+    ("property_value", "Property value", ("Property value", "Fastighetsvärde", "property value", "fastighetsvärde")),
+    ("policy_type", "Policy type", ("Policy type", "Försäkringstyp", "policy type", "försäkringstyp")),
+    ("coverage_amount", "Coverage amount", ("Coverage amount", "Försäkringsbelopp", "coverage amount", "försäkringsbelopp")),
+    ("monthly_premium", "Monthly premium", ("Monthly premium", "Månadspremie", "monthly premium", "månadspremie")),
+)
 
 # Keywords that mark a link as worth surfacing to the agent (get-a-price /
 # buy / contact-a-human actions), so it can give concrete next steps instead
@@ -164,6 +193,123 @@ def fetch_lf_page(topic: str) -> str:
 
     _write_cache(topic, result)
     return result
+
+
+def fill_customer_form(extracted_text: str, form_template: dict | None = None) -> str:
+    """Populate a form from realistic Swedish insurance application text.
+
+    Handles Swedish and English aliases, bullets, bold headings with values on
+    the next line, common date/personnummer formats, spaced currency amounts,
+    and postcode/city address continuations without inventing missing values.
+    """
+    default_fields = {
+        name: (label, aliases)
+        for name, label, aliases in DEFAULT_CUSTOMER_FORM_FIELDS
+    }
+    template = form_template or {
+        "type": "customer_details",
+        "title": "Customer details from uploaded document",
+        "fields": [
+            {"name": name, "label": label, "type": "text"}
+            for name, (label, _aliases) in default_fields.items()
+        ],
+    }
+
+    lines = (extracted_text or "").splitlines()
+
+    def clean_line(line: str) -> str:
+        # Accept Markdown bullets/headings without letting their markers become field values.
+        return re.sub(r"^\s*(?:[-*•]\s+|#+\s*)", "", line).strip()
+
+    def field_aliases(name: str, label: str) -> list[str]:
+        aliases = set(default_fields.get(name, ("", ()))[1])
+        aliases.update({label, name, name.replace("_", " ")})
+        return sorted((alias for alias in aliases if alias), key=lambda alias: len(_fold(alias)), reverse=True)
+
+    def find_fields(line: str, field_specs: list[tuple[str, str]]) -> list[tuple[int, int, str, str, str]]:
+        cleaned = clean_line(line)
+        folded = _fold(cleaned)
+        candidates = []
+        for name, label in field_specs:
+            for alias in field_aliases(name, label):
+                folded_alias = _fold(alias)
+                # Search the folded line so Swedish accents and unaccented OCR both match.
+                pattern = rf"(?<!\w)(?:\*\*)?{re.escape(folded_alias)}(?:\*\*)?\s*(?::|=|-)(?:\s*)"
+                for match in re.finditer(pattern, folded, re.IGNORECASE):
+                    candidates.append((match.start(), match.end(), name, label, match.group(0)))
+        candidates.sort(key=lambda candidate: (candidate[0], -(candidate[1] - candidate[0])))
+        matches = []
+        for candidate in candidates:
+            if any(candidate[0] >= existing[0] and candidate[1] <= existing[1] for existing in matches):
+                continue
+            matches.append(candidate)
+        return matches
+
+    def find_heading(line: str, field_specs: list[tuple[str, str]]) -> tuple[str, str] | None:
+        cleaned = clean_line(line)
+        folded = _fold(cleaned)
+        for name, label in field_specs:
+            for alias in field_aliases(name, label):
+                alias_pattern = re.escape(_fold(alias))
+                # Bold-only headings use the following line as their value.
+                if re.fullmatch(rf"\*\*{alias_pattern}\*\*\s*:?[\s]*", folded, re.IGNORECASE):
+                    return name, label
+        return None
+
+    def clean_value(value: str) -> str:
+        return re.sub(r"\*\*$", "", value).strip()
+
+    field_specs = [
+        (str(field.get("name", "field")), str(field.get("label", field.get("name", "field").replace("_", " ").title())))
+        for field in template.get("fields", [])
+    ]
+    values = {name: "" for name, _label in field_specs}
+    for index, line in enumerate(lines):
+        found_fields = find_fields(line, field_specs)
+        if not found_fields:
+            heading = find_heading(line, field_specs)
+            if not heading:
+                continue
+            name, _label = heading
+            value = clean_value(clean_line(lines[index + 1])) if index + 1 < len(lines) else ""
+            if value:
+                values[name] = value
+            continue
+        for field_index, match in enumerate(found_fields):
+            start, end, name, _label, _matched = match
+            next_start = found_fields[field_index + 1][0] if field_index + 1 < len(found_fields) else len(clean_line(line))
+            value = clean_value(clean_line(line)[end:next_start].strip(" ,;|"))
+            if not value and field_index == 0 and index + 1 < len(lines):
+                next_line = clean_line(lines[index + 1])
+                if next_line and not find_fields(next_line, field_specs) and not find_heading(next_line, field_specs):
+                    value = next_line
+
+            if name == "personnummer":
+                # Swedish personnummer may be written with either a two- or four-digit year.
+                personnummer = re.search(r"\b(?:\d{6}|\d{8})-\d{4}\b", value)
+                value = personnummer.group(0) if personnummer else ""
+
+            if name in {"address", "property_address"} and value and field_index == len(found_fields) - 1:
+                continuation = clean_line(lines[index + 1]) if index + 1 < len(lines) else ""
+                if continuation and not find_fields(continuation, field_specs) and not find_heading(continuation, field_specs):
+                    if re.search(r"\b\d{3}\s?\d{2}\b", continuation) or len(continuation) <= 80:
+                        value = f"{value}, {continuation}"
+            if value:
+                values[name] = value
+
+    populated_fields = []
+    for field in template.get("fields", []):
+        name = str(field.get("name", "field"))
+        label = str(field.get("label", name.replace("_", " ").title()))
+        populated_fields.append({
+            **field,
+            "name": name,
+            "label": label,
+            "value": values.get(name, ""),
+            "required": field.get("required", False),
+        })
+
+    return json.dumps({**template, "fields": populated_fields}, ensure_ascii=False)
 
 
 def find_service_provider(category: str, location: str) -> str:

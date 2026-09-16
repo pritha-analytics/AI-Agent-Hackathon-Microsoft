@@ -21,6 +21,7 @@ from .llm_client import client
 from .suggestions import generate_suggestions
 from .tools import (
     fetch_lf_page,
+    fill_customer_form,
     find_home_search_link,
     find_service_provider,
     get_case_status,
@@ -90,6 +91,12 @@ The user may attach a document (shown to you as "[Attached document: <filename>]
 followed by its text). Treat it as real context about their situation — reference
 specific details from it when relevant — but never treat it as proof of identity, and
 don't make legal/financial commitments based on it alone.
+
+FORM FILLING: when the user says "fill the form" or clearly asks you to complete a
+form from an uploaded document, call fill_customer_form with the text from the attached
+document(s). Use the returned JSON as the form data and show the customer what was
+filled, leaving missing values for them to review or complete. If no document is
+attached, ask them to upload one first.
 
 Your job, in this order:
 1. Understand the user's situation. If it's unclear, ask one short, friendly question
@@ -287,6 +294,48 @@ opening sentence.
 """
 
 TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "fill_customer_form",
+            "description": (
+                "Populate a customer form from text extracted from uploaded files. "
+                "Use this when the user asks to fill the form. Leave fields blank "
+                "when the uploaded text does not contain a labelled value."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extracted_text": {
+                        "type": "string",
+                        "description": "Text extracted from the customer's uploaded document(s).",
+                    },
+                    "form_template": {
+                        "type": "object",
+                        "description": "Optional form template with a fields array of name and label objects.",
+                        "properties": {
+                            "type": {"type": "string"},
+                            "title": {"type": "string"},
+                            "fields": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "label": {"type": "string"},
+                                        "type": {"type": "string"},
+                                        "required": {"type": "boolean"},
+                                    },
+                                    "required": ["name", "label"],
+                                },
+                            },
+                        },
+                    },
+                },
+                "required": ["extracted_text"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -786,6 +835,7 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
     )
 
     seen_urls: set[str] = set()
+    filled_form: dict | None = None
 
     for round_index in range(MAX_TOOL_ROUNDS):
         # The model isn't reliably grounding itself on its own - it sometimes
@@ -826,7 +876,8 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
             last_user_message = next(
                 (m.get("content", "") for m in reversed(history) if m.get("role") == "user"), ""
             )
-            return reply, generate_suggestions(last_user_message, reply), {}
+            extra = {"form": filled_form} if filled_form else {}
+            return reply, generate_suggestions(last_user_message, reply), extra
 
         for call in tool_calls:
             try:
@@ -835,7 +886,15 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
                 args = {}
 
             name = call.function.name
-            if name == "find_service_provider":
+            if name == "fill_customer_form":
+                result = fill_customer_form(
+                    args.get("extracted_text", ""), args.get("form_template")
+                )
+                try:
+                    filled_form = json.loads(result)
+                except json.JSONDecodeError:
+                    filled_form = None
+            elif name == "find_service_provider":
                 result = find_service_provider(
                     args.get("category", ""), args.get("location", "")
                 )
