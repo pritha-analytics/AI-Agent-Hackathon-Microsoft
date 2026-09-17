@@ -183,6 +183,7 @@ let ratingSubmitted = false; // this session already sent a satisfaction rating
 let sessionMessageCount = 0; // how many session-store messages we've already accounted for
 let humanHandoffActive = false; // once true, the composer talks to a human, not the AI
 let lastKnownAgent = null; // name of the CS agent assigned to this session, if any
+let activeForm = null; // control handle for the most recently rendered inline form (see addForm), or null once there's nothing pending to confirm/correct
 let sessionId =
   sessionStorage.getItem("ltn-session-id") ||
   (() => {
@@ -583,11 +584,26 @@ const FORM_FIELD_ANSWER_PREFIX = {
   dob: "Date of birth",
 };
 
+// The user's own confirmation text is too free-form (esp. in Swedish) to match
+// reliably, so the primary signal is the agent's *reply*: backend/agent.py's
+// FORM FILLING prompt (rule 1) always has the model mention a case officer/
+// "handläggare" reviewing the details and that the form is ready for review
+// once it treats the form as confirmed -- a fixed-enough phrase to detect,
+// and one that isn't used anywhere else in the agent's replies. The user-text
+// regexes below are a secondary check for the (less reliable) case where the
+// reply doesn't happen to include that phrasing.
+const FORM_CONFIRM_REPLY_RE = /(handl[äa]ggare|case officer|redo f[öo]r granskning|ready for review)/i;
+const FORM_CONFIRM_RE = /\b(yes|that'?s (correct|right)|looks good|looks right|submit|confirmed?|tack|det st[äa]mmer|ja)\b/i;
+const FORM_CHANGE_RE = /\b(change|update|fix|wrong|incorrect|[äa]ndra|byt|fel|uppdatera)\b/i;
+
 function addForm(form) {
   if (!form || !form.fields || !form.fields.length) return;
 
   const wrapper = document.createElement("form");
   wrapper.className = "inline-form";
+
+  const values = {};
+  let formSubmitted = false;
 
   if (form.title) {
     const title = document.createElement("h3");
@@ -595,61 +611,92 @@ function addForm(form) {
     wrapper.appendChild(title);
   }
 
-  const values = {};
-  for (const field of form.fields) {
-    const fieldEl = document.createElement("div");
-    fieldEl.className = "inline-form-field";
-
-    const label = document.createElement("label");
-    label.textContent = field.label;
-    fieldEl.appendChild(label);
-
-    if (field.type === "yesno") {
-      const group = document.createElement("div");
-      group.className = "inline-form-yesno";
-      for (const option of ["Yes", "No"]) {
-        const optId = `${field.name}-${option}`;
-        const radioLabel = document.createElement("label");
-        radioLabel.className = "inline-form-radio";
-        const radio = document.createElement("input");
-        radio.type = "radio";
-        radio.name = field.name;
-        radio.value = option;
-        radio.id = optId;
-        radio.addEventListener("change", () => {
-          values[field.name] = option;
-        });
-        radioLabel.appendChild(radio);
-        radioLabel.append(` ${option}`);
-        group.appendChild(radioLabel);
-      }
-      fieldEl.appendChild(group);
-    } else {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.required = field.required !== false;
-      if (field.value !== null && field.value !== undefined) {
-        input.value = String(field.value);
-        values[field.name] = input.value;
-      }
-      if (field.placeholder) input.placeholder = field.placeholder;
-      input.addEventListener("input", () => {
-        values[field.name] = input.value;
-      });
-      fieldEl.appendChild(input);
-    }
-
-    wrapper.appendChild(fieldEl);
-  }
+  const fieldsContainer = document.createElement("div");
+  fieldsContainer.className = "inline-form-fields";
+  wrapper.appendChild(fieldsContainer);
 
   const errorEl = document.createElement("p");
   errorEl.className = "inline-form-error";
-  wrapper.appendChild(errorEl);
 
   const submitBtn = document.createElement("button");
   submitBtn.type = "submit";
   submitBtn.textContent = "Submit";
-  wrapper.appendChild(submitBtn);
+
+  function renderEditableFields() {
+    fieldsContainer.innerHTML = "";
+    for (const field of form.fields) {
+      const fieldEl = document.createElement("div");
+      fieldEl.className = "inline-form-field";
+
+      const label = document.createElement("label");
+      label.textContent = field.label;
+      fieldEl.appendChild(label);
+
+      if (field.type === "yesno") {
+        const group = document.createElement("div");
+        group.className = "inline-form-yesno";
+        for (const option of ["Yes", "No"]) {
+          const optId = `${field.name}-${option}`;
+          const radioLabel = document.createElement("label");
+          radioLabel.className = "inline-form-radio";
+          const radio = document.createElement("input");
+          radio.type = "radio";
+          radio.name = field.name;
+          radio.value = option;
+          radio.id = optId;
+          radio.checked = values[field.name] === option;
+          radio.addEventListener("change", () => {
+            values[field.name] = option;
+          });
+          radioLabel.appendChild(radio);
+          radioLabel.append(` ${option}`);
+          group.appendChild(radioLabel);
+        }
+        fieldEl.appendChild(group);
+      } else {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.required = field.required !== false;
+        if (values[field.name] !== undefined) {
+          input.value = values[field.name];
+        } else if (field.value !== null && field.value !== undefined) {
+          input.value = String(field.value);
+          values[field.name] = input.value;
+        }
+        if (field.placeholder) input.placeholder = field.placeholder;
+        input.addEventListener("input", () => {
+          values[field.name] = input.value;
+        });
+        fieldEl.appendChild(input);
+      }
+
+      fieldsContainer.appendChild(fieldEl);
+    }
+    wrapper.classList.remove("inline-form-submitted");
+    errorEl.textContent = "";
+    wrapper.append(errorEl, submitBtn);
+  }
+
+  function renderSummary() {
+    fieldsContainer.innerHTML = "";
+    for (const field of form.fields) {
+      const row = document.createElement("div");
+      row.className = "inline-form-summary-row";
+      const label = document.createElement("span");
+      label.className = "inline-form-summary-label";
+      label.textContent = field.label;
+      const value = document.createElement("span");
+      value.className = "inline-form-summary-value";
+      value.textContent = values[field.name] || "—";
+      row.append(label, value);
+      fieldsContainer.appendChild(row);
+    }
+    wrapper.classList.add("inline-form-submitted");
+    errorEl.remove();
+    submitBtn.remove();
+  }
+
+  renderEditableFields();
 
   wrapper.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -661,12 +708,29 @@ function addForm(form) {
     const composed = form.fields
       .map((f) => `${FORM_FIELD_ANSWER_PREFIX[f.name] || f.label}: ${values[f.name]}`)
       .join("\n");
-    wrapper.remove();
+    formSubmitted = true;
+    renderSummary();
     sendMessage(composed);
   });
 
   messagesEl.appendChild(wrapper);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  activeForm = {
+    get submitted() {
+      return formSubmitted;
+    },
+    markSubmitted() {
+      if (formSubmitted) return;
+      formSubmitted = true;
+      renderSummary();
+    },
+    markEditable() {
+      if (!formSubmitted) return;
+      formSubmitted = false;
+      renderEditableFields();
+    },
+  };
 }
 
 // --- Satisfaction rating: a small, optional "how helpful was this chat"
@@ -753,7 +817,15 @@ async function getAssistantReply() {
     sessionMessageCount += 2; // the server just appended one user + one assistant message
     upsertChatListEntry();
     addSuggestions(data.suggestions, data.human_chat_option);
-    addForm(data.form);
+    if (activeForm && !activeForm.submitted && FORM_CONFIRM_REPLY_RE.test(data.content)) {
+      // The backend forces a tool call on the first round of every turn, which
+      // sometimes makes it re-invoke fill_customer_form on this very
+      // confirmation turn even though nothing changed -- treat the reply as
+      // the confirmation it is instead of popping up a duplicate form.
+      activeForm.markSubmitted();
+    } else {
+      addForm(data.form);
+    }
     showRatingBar();
   } catch (err) {
     pending.textContent = t().chatError;
@@ -887,6 +959,14 @@ fillFormBtn.addEventListener("click", () => {
 async function sendMessage(text, files = []) {
   const textToSend = text.trim();
   if (!textToSend && !files.length) return;
+
+  if (activeForm && textToSend) {
+    if (!activeForm.submitted && FORM_CONFIRM_RE.test(textToSend)) {
+      activeForm.markSubmitted();
+    } else if (activeForm.submitted && FORM_CHANGE_RE.test(textToSend)) {
+      activeForm.markEditable();
+    }
+  }
 
   chipsEl.style.display = "none";
   setComposerBusy(true);
@@ -1128,6 +1208,7 @@ function renderChatList() {
 
 function resetChatView() {
   messagesEl.innerHTML = "";
+  activeForm = null;
   const greetingDiv = document.createElement("div");
   greetingDiv.className = "msg assistant";
   greetingDiv.innerHTML = `<span class="msg-label" id="greeting-label"></span><p id="greeting-text"></p>`;
@@ -1196,6 +1277,7 @@ async function loadChat(id) {
     sessionMessageCount = data.messages.length;
     humanHandoffActive = Boolean(data.needs_human);
     lastKnownAgent = data.assigned_agent || null;
+    activeForm = null;
     history = data.messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role, content: m.content }));

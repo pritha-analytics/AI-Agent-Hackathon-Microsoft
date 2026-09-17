@@ -708,6 +708,30 @@ body.sidebar-collapsed .chat-shell {
   align-self: flex-start;
 }
 
+.inline-form-submitted {
+  background: #f4faf7;
+  border-color: #cfe9dc;
+  padding: 10px 14px;
+  gap: 6px;
+}
+
+.inline-form-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.inline-form-summary-label {
+  color: var(--text-muted);
+}
+
+.inline-form-summary-value {
+  color: var(--text-main);
+  font-weight: 600;
+  text-align: right;
+}
+
 .msg-label {
   display: flex;
   align-items: center;
