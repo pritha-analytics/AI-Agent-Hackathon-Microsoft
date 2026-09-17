@@ -33,8 +33,12 @@ DEFAULT_CUSTOMER_FORM_FIELDS = (
     ("personnummer", "Personal ID number", ("Personnummer", "Personal ID number", "Personal number", "SSN", "personnummer")),
     ("date_of_birth", "Date of birth", ("Date of birth", "Födelsedatum", "Född", "DOB", "date_of_birth")),
     ("address", "Address", ("Address", "Adress", "Gatuadress", "address", "adress")),
+    ("street", "Street address", ("Adress", "Address", "Gatuadress", "Street address", "Street", "street")),
     ("postnummer", "Postal code", ("Postnummer", "Postal code", "Postcode", "Zip code", "postnummer")),
+    ("postcode", "Postcode", ("Postnummer", "Postcode", "Postal code", "Zip code", "postcode")),
+    ("municipality", "Municipality", ("Kommun", "Municipality", "municipality")),
     ("ort", "City", ("Ort", "City", "Town", "ort", "city")),
+    ("city", "City", ("Ort", "City", "Town", "Stad", "city")),
     ("phone", "Phone", ("Phone", "Telefon", "Tel", "Mobile", "phone", "telefon")),
     ("email", "Email", ("Email", "E-mail", "Epost", "E-post", "email")),
     ("boendeform", "Type of housing", ("Boendeform", "Type of housing", "Housing type", "boendeform")),
@@ -199,8 +203,8 @@ def fill_customer_form(extracted_text: str, form_template: dict | None = None) -
     """Populate a form from realistic Swedish insurance application text.
 
     Handles Swedish and English aliases, bullets, bold headings with values on
-    the next line, common date/personnummer formats, spaced currency amounts,
-    and postcode/city address continuations without inventing missing values.
+    the next line, common date/personnummer formats, and address components
+    from labeled or unlabeled Swedish address text without inventing values.
     """
     default_fields = {
         name: (label, aliases)
@@ -297,6 +301,44 @@ def fill_customer_form(extracted_text: str, form_template: dict | None = None) -
             if value:
                 values[name] = value
 
+    address_components = {
+        "street": values.get("street", ""),
+        "postcode": values.get("postcode", "") or values.get("postnummer", ""),
+        "municipality": values.get("municipality", ""),
+        "city": values.get("city", "") or values.get("ort", ""),
+    }
+
+    if not address_components["street"] and values.get("address"):
+        address_components["street"] = values["address"]
+
+    postcode_pattern = re.compile(r"\b\d{3}\s?\d{2}\b")
+    if not address_components["postcode"]:
+        for line in lines:
+            cleaned = clean_line(line)
+            postcode_match = postcode_pattern.search(cleaned)
+            if not postcode_match:
+                continue
+            prefix = cleaned[:postcode_match.start()].strip(" ,;|")
+            suffix = cleaned[postcode_match.end():].strip(" ,;|")
+            if not address_components["street"] and prefix:
+                address_components["street"] = prefix
+            if not address_components["city"] and suffix:
+                address_components["city"] = suffix
+            address_components["postcode"] = postcode_match.group(0)
+            break
+
+    for name, value in address_components.items():
+        if name in values and not values[name]:
+            values[name] = value
+    values["address"] = ", ".join(
+        value for value in (
+            address_components["street"],
+            address_components["postcode"],
+            address_components["municipality"],
+            address_components["city"],
+        ) if value
+    )
+
     populated_fields = []
     for field in template.get("fields", []):
         name = str(field.get("name", "field"))
@@ -310,6 +352,48 @@ def fill_customer_form(extracted_text: str, form_template: dict | None = None) -
         })
 
     return json.dumps({**template, "fields": populated_fields}, ensure_ascii=False)
+
+
+def render_emergency_fund_gauge(current_sek: float, monthly_expenses_sek: float) -> str:
+    """Return gauge JSON for emergency savings and financial-readiness questions.
+
+    Use this for emergency-savings or financial-cushion questions, including
+    scenarios such as "what if I lose my job" or similar readiness concerns.
+    """
+    target_sek = monthly_expenses_sek * 3 if monthly_expenses_sek else 75000
+    percent = round(min(100, (current_sek / target_sek) * 100))
+
+    if percent < 50:
+        status = "critical"
+        message = (
+            f"Du har {percent}% av rekommenderad buffert — det är en bra idé att "
+            "bygga upp mer innan stora utgifter."
+        )
+    elif percent < 80:
+        status = "warning"
+        message = (
+            f"Du har {percent}% av rekommenderad buffert — du är på god väg, "
+            "men det finns utrymme att förbättra."
+        )
+    else:
+        status = "healthy"
+        message = (
+            f"Du har {percent}% av rekommenderad buffert — en trygg situation "
+            "för oväntade utgifter."
+        )
+
+    return json.dumps(
+        {
+            "type": "emergency_fund_gauge",
+            "title": "Emergency Fund Coverage",
+            "current_sek": current_sek,
+            "target_sek": target_sek,
+            "percent": percent,
+            "status": status,
+            "message": message,
+        },
+        ensure_ascii=False,
+    )
 
 
 def find_service_provider(category: str, location: str) -> str:
