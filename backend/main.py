@@ -1,12 +1,15 @@
+import html
 import re
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import audit, cs_client, metrics
+from . import audit, cs_client, forms_store, metrics
 from .agent import run_agent
 from .sessions import sessions
 from .topic_classifier import classify_topic
@@ -89,6 +92,12 @@ class AssignAgent(BaseModel):
 
 class RatingRequest(BaseModel):
     rating: int
+
+
+class SaveFormRequest(BaseModel):
+    session_id: str
+    title: str
+    fields: list[dict]
 
 
 @app.post("/api/chat")
@@ -227,6 +236,254 @@ def get_audit_trail(customer_id: str) -> dict:
     them. Demo-only: a real deployment would put real access control (only
     auditors/compliance, not any caller) in front of this endpoint."""
     return {"customer_id": customer_id, "events": audit.read_events(customer_id)}
+
+
+@app.post("/api/forms")
+def create_form(body: SaveFormRequest) -> dict:
+    form_id = forms_store.save_form(body.session_id, body.title, body.fields)
+    return {"id": form_id, "url": f"/forms/{form_id}"}
+
+
+@app.get("/api/forms")
+def api_list_forms() -> dict:
+    return {"forms": forms_store.list_forms()}
+
+
+@app.get("/api/forms/{form_id}")
+def api_get_form(form_id: str) -> dict:
+    form = forms_store.get_form(form_id)
+    if form is None:
+        raise HTTPException(status_code=404, detail="Unknown form")
+    return form
+
+
+def _format_timestamp(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return value
+
+
+def _forms_list_page() -> str:
+    forms = forms_store.list_forms()
+
+    if forms:
+        rows = "\n".join(
+            f"""
+            <tr>
+                <td class="ts">{html.escape(_format_timestamp(f["created_at"]))}</td>
+                <td>{html.escape(f["title"])}</td>
+                <td><a class="link" href="/forms/{html.escape(f["id"])}">Öppna &rarr;</a></td>
+            </tr>
+            """
+            for f in forms
+        )
+        body = f"""
+        <table>
+            <thead>
+                <tr><th>Datum</th><th>Ansökan</th><th></th></tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+        """
+    else:
+        body = '<p class="empty">Inga ansökningar ännu</p>'
+
+    return f"""<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>Inkomna ansökningar</title>
+<style>
+    body {{
+        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #ffffff;
+        color: #1f2937;
+        margin: 0;
+        padding: 40px;
+    }}
+    h1 {{
+        color: #002f5f;
+        margin-bottom: 4px;
+    }}
+    .subtitle {{
+        color: #6b7280;
+        font-size: 13px;
+        margin-top: 0;
+        margin-bottom: 32px;
+    }}
+    table {{
+        width: 100%;
+        max-width: 800px;
+        border-collapse: collapse;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        overflow: hidden;
+    }}
+    th, td {{
+        text-align: left;
+        padding: 14px 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }}
+    th {{
+        color: #6b7280;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        background: #f9fafb;
+    }}
+    tr:last-child td {{
+        border-bottom: none;
+    }}
+    .ts {{
+        color: #6b7280;
+        font-size: 13px;
+        white-space: nowrap;
+    }}
+    .link {{
+        color: #002f5f;
+        text-decoration: none;
+        font-weight: 600;
+    }}
+    .link:hover {{
+        text-decoration: underline;
+    }}
+    .empty {{
+        color: #6b7280;
+        max-width: 800px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 32px;
+        text-align: center;
+    }}
+</style>
+</head>
+<body>
+    <h1>Inkomna ansökningar</h1>
+    <p class="subtitle">Submitted applications</p>
+    {body}
+</body>
+</html>"""
+
+
+def _form_detail_page(form: dict) -> str:
+    fields_html = "\n".join(
+        f"""
+        <div class="field">
+            <div class="field-label">{html.escape(str(field.get("label", "")))}</div>
+            <div class="field-value">{html.escape(str(field.get("value", "")))}</div>
+        </div>
+        """
+        for field in form.get("fields", [])
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>{html.escape(form["title"])}</title>
+<style>
+    body {{
+        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #ffffff;
+        color: #1f2937;
+        margin: 0;
+        padding: 40px;
+    }}
+    .page {{
+        max-width: 640px;
+        margin: 0 auto;
+    }}
+    .top-row {{
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }}
+    .eyebrow {{
+        color: #6b7280;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        margin: 0 0 4px 0;
+    }}
+    h2 {{
+        color: #002f5f;
+        margin: 0 0 24px 0;
+    }}
+    .print-btn {{
+        background: #ffffff;
+        color: #002f5f;
+        border: 1px solid #002f5f;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+    }}
+    .print-btn:hover {{
+        background: #f0f4f8;
+    }}
+    .field {{
+        margin-bottom: 18px;
+    }}
+    .field-label {{
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        color: #6b7280;
+        margin-bottom: 6px;
+    }}
+    .field-value {{
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        background: #f9fafb;
+        padding: 10px 12px;
+        color: #1f2937;
+        min-height: 1.2em;
+    }}
+    .meta {{
+        margin-top: 32px;
+        padding-top: 16px;
+        border-top: 1px solid #e5e7eb;
+        color: #9ca3af;
+        font-size: 12px;
+    }}
+    @media print {{
+        .print-btn {{ display: none; }}
+    }}
+</style>
+</head>
+<body>
+    <div class="page">
+        <div class="top-row">
+            <p class="eyebrow">LF Bergslagen &mdash; Inkommen ansökan</p>
+            <button class="print-btn" onclick="window.print()">Skriv ut</button>
+        </div>
+        <h2>{html.escape(form["title"])}</h2>
+        {fields_html}
+        <div class="meta">
+            Form ID: {html.escape(form["id"])} &middot; Created at: {html.escape(form["created_at"])}
+        </div>
+    </div>
+</body>
+</html>"""
+
+
+@app.get("/forms", response_class=HTMLResponse)
+def forms_list_page() -> str:
+    return _forms_list_page()
+
+
+@app.get("/forms/{form_id}", response_class=HTMLResponse)
+def form_detail_page(form_id: str) -> str:
+    form = forms_store.get_form(form_id)
+    if form is None:
+        raise HTTPException(status_code=404, detail="Unknown form")
+    return _form_detail_page(form)
 
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
