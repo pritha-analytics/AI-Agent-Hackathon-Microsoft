@@ -272,6 +272,7 @@ def _forms_list_page() -> str:
             f"""
             <tr>
                 <td class="ts">{html.escape(_format_timestamp(f["created_at"]))}</td>
+                <td class="id-cell"><a class="id-link" href="/forms/{html.escape(f["id"])}">{html.escape(f["id"])}</a></td>
                 <td>{html.escape(f["title"])}</td>
                 <td><a class="link" href="/forms/{html.escape(f["id"])}">Öppna &rarr;</a></td>
             </tr>
@@ -281,7 +282,7 @@ def _forms_list_page() -> str:
         body = f"""
         <table>
             <thead>
-                <tr><th>Datum</th><th>Ansökan</th><th></th></tr>
+                <tr><th>Datum</th><th>Form ID</th><th>Ansökan</th><th></th></tr>
             </thead>
             <tbody>
                 {rows}
@@ -341,6 +342,17 @@ def _forms_list_page() -> str:
         color: #6b7280;
         font-size: 13px;
         white-space: nowrap;
+    }}
+    .id-cell {{
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 13px;
+    }}
+    .id-link {{
+        color: #6b7280;
+        text-decoration: none;
+    }}
+    .id-link:hover {{
+        text-decoration: underline;
     }}
     .link {{
         color: #002f5f;
