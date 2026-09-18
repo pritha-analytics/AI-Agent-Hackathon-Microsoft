@@ -18,3 +18,5 @@ cs-service/target/
 _design-refs/
 
 backend/data/
+
+backend/cache/
