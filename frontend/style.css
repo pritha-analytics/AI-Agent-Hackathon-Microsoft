@@ -732,6 +732,31 @@ body.sidebar-collapsed .chat-shell {
   text-align: right;
 }
 
+.form-saved-note {
+  align-self: flex-start;
+  padding: 2px 4px;
+  font-size: 13px;
+}
+
+.form-saved-link {
+  color: var(--lf-blue-dark);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.form-saved-link:hover {
+  color: var(--lf-blue);
+}
+
+.form-save-error {
+  align-self: flex-start;
+  padding: 2px 4px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-style: italic;
+}
+
 .msg-label {
   display: flex;
   align-items: center;
