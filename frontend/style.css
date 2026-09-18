@@ -976,6 +976,78 @@ body.widget-compact #sidebar-show-btn {
   display: none !important;
 }
 
+/* Compact popup header: one tidy bar (~68px) instead of the full-page
+   header. Left: the LF icon (lf-logo.png cropped to just the square icon,
+   without the wordmark) + "Sara · AI assistant". Right: the EN/SV toggle
+   with "Prata med en person" underneath. The parent page overlays its
+   expand/full-screen/close buttons in the top-right corner (see
+   .chat-widget-header in site.css), so the toggle leaves room for them.
+   Everything is scoped to body.widget-compact, so the standalone page and
+   the expanded/full-screen widget keep the full header untouched. */
+body.widget-compact .topbar {
+  padding: 8px 12px;
+}
+
+body.widget-compact .topbar-left,
+body.widget-compact .brand {
+  min-width: 0;
+}
+
+body.widget-compact .brand {
+  gap: 8px;
+}
+
+/* lf-logo.png is icon + wordmark in one 277x66 image, so show only the
+   icon (plus a little of its white margin, which reads as a rounded tile
+   on the navy bar): object-fit: none + object-position crop to that box,
+   and zoom scales the 58px crop down to 40px. */
+body.widget-compact .brand-logo {
+  border-radius: 8px;
+  height: 58px;
+  object-fit: none;
+  object-position: -2px -6px;
+  width: 58px;
+  zoom: 0.69;
+}
+
+/* Drop the round avatar and the "Digital assistant · LF Bergslagen" line;
+   the title becomes plain "Sara · AI assistant". */
+body.widget-compact .avatar-ai,
+body.widget-compact .brand-sub {
+  display: none;
+}
+
+body.widget-compact .brand-name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.widget-compact .brand-name::after {
+  content: " · AI assistant";
+}
+
+body.widget-compact .header-actions {
+  align-items: flex-end;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+body.widget-compact .lang-toggle {
+  margin-right: 88px;
+}
+
+body.widget-compact .lang-btn {
+  padding: 4px 10px;
+}
+
+body.widget-compact .human-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+}
+
 @media (max-width: 640px) {
   .sidebar {
     width: 84px;

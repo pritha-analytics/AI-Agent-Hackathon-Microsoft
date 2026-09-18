@@ -578,6 +578,28 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
+/* Compact (small bubble) size only: the embedded chat draws its own compact
+   header (icon, "Sara · AI assistant", EN/SV, "Prata med en person" -- see
+   body.widget-compact in style.css), so this bar drops its duplicate title
+   and shrinks to just the window buttons, overlaid in the top-right corner.
+   Expanded and full-screen keep the normal bar above. */
+.chat-widget:not(.expanded):not(.fullscreen) .chat-widget-header {
+  background: none;
+  padding: 8px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 1;
+}
+
+.chat-widget:not(.expanded):not(.fullscreen) .chat-widget-header > span {
+  display: none;
+}
+
+.chat-widget:not(.expanded):not(.fullscreen) .chat-widget-header button {
+  padding: 4px 6px;
+}
+
 .chat-widget-frame {
   border: none;
   flex: 1;
