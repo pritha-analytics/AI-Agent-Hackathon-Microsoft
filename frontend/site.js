@@ -90,7 +90,7 @@ closeBtn.addEventListener("click", closeWidget);
 maximizeBtn.addEventListener("click", () => setSizeMode(sizeMode === "compact" ? "medium" : "compact"));
 fullscreenBtn.addEventListener("click", () => setSizeMode(sizeMode === "fullscreen" ? "medium" : "fullscreen"));
 
-document.getElementById("nav-chat-btn").addEventListener("click", () => openWidget());
+document.getElementById("nav-chat-btn")?.addEventListener("click", () => openWidget());
 document.getElementById("hero-chat-btn").addEventListener("click", () => openWidget());
 
 document.getElementById("footer-chat-link").addEventListener("click", (event) => {

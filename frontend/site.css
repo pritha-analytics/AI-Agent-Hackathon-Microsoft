@@ -1,131 +1,143 @@
-/* Marketing/demo homepage for LF Bergslagen -- reuses the color tokens
-   defined in style.css (:root) so it stays visually consistent with the
-   chat app itself, which is embedded here as a widget. */
+:root {
+  --lf-navy: #002f5f;
+  /* Sampled from the hero band of the reference screenshot (uniform #e3f4fc). */
+  --lf-light-blue: #e3f4fc;
+  --lf-red: #d32f2f;
+  /* Muted coral used for accent strokes in the hero illustration; sampled from
+     LF's illustration sheet (frontend_refs). */
+  --lf-coral: #ec5c5c;
+  --lf-border: #e5e7eb;
+  --lf-muted: #6b7280;
+  --lf-serif: Georgia, "Times New Roman", serif;
+  --lf-sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+/* Marketing/demo homepage for LF Bergslagen. The header, hero and "Populärt"
+   cards follow the public LF Bergslagen site (used with LF's permission);
+   the rest still reuses the color tokens defined in style.css (:root) so it
+   stays consistent with the chat app embedded here as a widget. */
 
 .site-body {
   display: block;
+  font-family: var(--lf-sans);
   height: auto;
   min-height: 100vh;
   overflow-y: auto;
 }
 
-.utility-bar {
-  align-items: center;
-  background: #eef3f8;
-  display: flex;
-  justify-content: flex-end;
-  min-height: 32px;
-  padding: 0 32px;
+/* Shared thin line-art style for every inline SVG icon on the page. */
+.ui-icon,
+.card-icon,
+.moment-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.utility-links {
-  display: flex;
-  gap: 18px;
+.ui-icon {
+  flex-shrink: 0;
+  height: 16px;
+  stroke-width: 1.75;
+  width: 16px;
 }
 
-.utility-links a {
-  color: var(--text-muted);
-  font-size: 12px;
-  text-decoration: none;
-}
-
-.utility-links a:hover {
-  color: var(--lf-blue);
-}
+/* --- Header --- */
 
 .site-nav {
   align-items: center;
   background: white;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--lf-border);
   display: flex;
-  gap: 24px;
-  justify-content: space-between;
-  padding: 14px 32px;
+  gap: 28px;
+  padding: 10px max(32px, calc((100% - 1320px) / 2));
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
 .site-logo {
-  align-items: center;
-  display: flex;
-  gap: 10px;
+  display: block;
+  flex-shrink: 0;
 }
 
-.site-logo-mark {
-  background: var(--lf-blue);
-  border-radius: 6px;
-  color: white;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  padding: 6px 8px;
-}
-
-.site-logo-text {
-  color: var(--lf-blue-dark);
-  font-size: 17px;
-  font-weight: 700;
+.site-logo img {
+  display: block;
+  height: auto;
+  max-width: 100%;
 }
 
 .site-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 26px;
+  gap: 24px;
+  margin-left: auto;
 }
 
 .site-links a {
-  color: var(--text-main);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--lf-navy);
+  font-size: 15px;
+  font-weight: 400;
   text-decoration: none;
 }
 
 .site-links a:hover {
-  color: var(--lf-blue);
+  text-decoration: underline;
 }
 
-.site-nav-cta {
-  background: var(--lf-blue);
-  border: none;
-  border-radius: 8px;
-  color: white;
-  cursor: pointer;
+.site-tools {
+  align-items: center;
+  display: flex;
+  gap: 28px;
+}
+
+.site-tool {
+  align-items: center;
+  color: var(--lf-navy);
+  display: inline-flex;
   font-size: 14px;
   font-weight: 700;
-  padding: 10px 16px;
+  gap: 6px;
+  text-decoration: none;
   white-space: nowrap;
 }
 
-.site-nav-cta:hover {
-  background: var(--lf-blue-dark);
+.site-tool:hover {
+  text-decoration: underline;
 }
+
+/* --- Hero --- */
 
 .hero {
   align-items: center;
-  background: linear-gradient(135deg, #eef3f8 0%, #ffffff 100%);
-  display: flex;
-  flex-wrap: wrap;
+  background: var(--lf-light-blue);
+  display: grid;
   gap: 32px;
-  padding: 72px 32px;
-}
-
-.hero-copy {
-  flex: 1 1 420px;
+  grid-template-columns: 45fr 55fr;
+  padding: 56px max(32px, calc((100% - 1320px) / 2));
 }
 
 .hero-copy h1 {
-  color: var(--lf-blue-dark);
-  font-size: clamp(28px, 4vw, 42px);
+  color: var(--lf-navy);
+  font-family: var(--lf-serif);
+  font-size: clamp(32px, 3.6vw, 48px);
+  font-weight: 700;
   line-height: 1.15;
-  margin: 0 0 16px;
+  margin: 0 0 20px;
+  text-wrap: balance;
+}
+
+/* Keeps "navigate them." together so the headline never leaves "them." alone
+   on its own line. */
+.nowrap {
+  white-space: nowrap;
 }
 
 .hero-copy p {
-  color: var(--text-muted);
-  font-size: 16px;
+  color: var(--lf-muted);
+  font-size: 17px;
   line-height: 1.6;
-  margin: 0 0 24px;
+  margin: 0 0 28px;
   max-width: 52ch;
 }
 
@@ -165,27 +177,61 @@
   border-color: var(--lf-blue);
 }
 
+/* Hero buttons: navy-filled primary, white secondary with a thin navy border.
+   Scoped so the CTA band button further down keeps its own look. */
+.hero-actions .btn {
+  align-items: center;
+  border-radius: 6px;
+  display: inline-flex;
+  font-family: inherit;
+  gap: 8px;
+  padding: 13px 22px;
+}
+
+.hero-actions .btn-primary {
+  background: var(--lf-navy);
+  color: white;
+}
+
+.hero-actions .btn-primary:hover {
+  background: #00234a;
+}
+
+.hero-actions .btn-secondary {
+  background: white;
+  border: 1px solid var(--lf-navy);
+  color: var(--lf-navy);
+}
+
+.hero-actions .btn-secondary:hover {
+  background: #f3f9fd;
+  border-color: var(--lf-navy);
+}
+
 .hero-art {
   align-items: center;
-  background: #eef3f8;
-  border-radius: 14px;
-  flex: 1 1 320px;
   display: flex;
-  min-height: 300px;
   justify-content: center;
 }
 
 .hero-illustration {
-  color: var(--lf-blue-dark);
+  color: var(--lf-navy);
   display: block;
   height: auto;
   max-width: 600px;
   width: 100%;
 }
 
+/* Coral highlights on top of the navy line art. Stroke only, never filled. */
+.hero-illustration .accent {
+  stroke: var(--lf-coral);
+}
+
+/* --- Populärt cards --- */
+
 .popular {
   background: white;
-  padding: 48px 32px 56px;
+  padding: 56px max(32px, calc((100% - 1320px) / 2)) 64px;
 }
 
 .section-heading,
@@ -196,15 +242,22 @@
   max-width: 1080px;
 }
 
+/* The Populärt block spans the same content width as the header and hero. */
+.popular .section-heading,
+.popular-grid {
+  max-width: none;
+}
+
 .section-heading {
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .section-kicker {
   color: var(--lf-red);
+  display: block;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -215,46 +268,54 @@
   margin: 5px 0 0;
 }
 
+.popular .section-heading h2 {
+  color: var(--lf-navy);
+  font-family: var(--lf-serif);
+  font-size: 32px;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
 .popular-grid {
   display: grid;
-  gap: 14px;
+  gap: 24px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .popular-card {
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text-main);
+  align-items: center;
+  background: white;
+  border: 1px solid var(--lf-border);
+  border-radius: 8px;
+  color: var(--lf-navy);
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  min-height: 160px;
-  padding: 18px;
+  gap: 16px;
+  justify-content: center;
+  min-height: 132px;
+  padding: 24px;
+  text-align: center;
   text-decoration: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .popular-card:hover {
-  border-color: var(--lf-blue);
-  box-shadow: 0 8px 20px rgba(9, 41, 68, 0.12);
-  transform: translateY(-2px);
+  border-color: var(--lf-navy);
+  box-shadow: 0 6px 16px rgba(0, 47, 95, 0.1);
 }
 
-.popular-icon {
-  font-size: 28px;
+/* The glyphs are drawn with ~4px of padding inside their 48-unit box, so a
+   48px box gives a visible ~40px icon. */
+.card-icon {
+  height: 48px;
+  stroke-width: 1.75;
+  width: 48px;
 }
 
 .popular-card-title {
-  color: var(--lf-blue-dark);
+  color: var(--lf-navy);
   font-size: 16px;
   font-weight: 700;
-}
-
-.popular-card-copy {
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.45;
 }
 
 .welcome-section {
@@ -305,6 +366,13 @@
   gap: 8px;
   padding: 20px 12px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.moment-icon {
+  color: var(--lf-navy);
+  height: 36px;
+  stroke-width: 2;
+  width: 36px;
 }
 
 .moment-card span {
@@ -517,21 +585,74 @@
   width: 100%;
 }
 
-@media (max-width: 520px) {
-  .utility-bar {
-    padding: 0 16px;
-  }
-
+/* The header (natural-size 277px logo, nav, tools, chat pill) is wide, so it
+   sheds items progressively: tighter spacing, then no nav, then icon-only
+   tools. */
+@media (max-width: 1320px) {
   .site-nav {
-    padding: 12px 16px;
+    gap: 20px;
   }
 
+  .site-links {
+    gap: 18px;
+  }
+
+  .site-tools {
+    gap: 20px;
+  }
+}
+
+@media (max-width: 1120px) {
   .site-links {
     display: none;
   }
 
+  .site-tools {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 40px 24px;
+  }
+
   .popular-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .site-tool span {
+    display: none;
+  }
+
+  .site-logo img {
+    width: 200px;
+  }
+}
+
+@media (max-width: 520px) {
+  .site-nav {
+    gap: 12px;
+    padding: 10px 16px;
+  }
+
+  .site-logo img {
+    width: 140px;
+  }
+
+  .site-tools {
+    gap: 16px;
+  }
+
+  .popular-grid {
+    gap: 12px;
+  }
+
+  .popular-card {
+    padding: 16px 12px;
   }
 
   .hero,
