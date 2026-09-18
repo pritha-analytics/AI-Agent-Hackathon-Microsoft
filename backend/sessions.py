@@ -38,6 +38,10 @@ class SessionStore:
     def get(self, session_id: str) -> dict | None:
         return self._sessions.get(session_id)
 
+    def delete(self, session_id: str) -> bool:
+        """Remove a customer's transient chat transcript from this demo store."""
+        return self._sessions.pop(session_id, None) is not None
+
     def list_summaries(self) -> list[dict]:
         summaries = []
         for session_id, session in self._sessions.items():

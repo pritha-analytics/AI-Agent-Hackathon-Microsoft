@@ -43,14 +43,26 @@ body {
 }
 
 .sidebar {
-  width: 220px;
-  min-width: 180px;
+  width: 300px;
+  min-width: 280px;
   background: white;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 12px;
   overflow-y: auto;
+  transition: width 180ms ease, min-width 180ms ease;
+}
+
+.sidebar.sidebar-expanded {
+  width: 400px;
+  min-width: 360px;
+}
+
+.sidebar-toolbar {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 10px;
 }
 
 .new-chat-btn {
@@ -62,30 +74,153 @@ body {
   font-weight: 600;
   font-size: 13.5px;
   cursor: pointer;
-  margin-bottom: 10px;
+  flex: 1;
+}
+
+.sidebar-toggle {
+  align-items: center;
+  background: white;
+  border: 1px solid #b9c9dc;
+  border-radius: 8px;
+  color: var(--lf-blue);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 18px;
+  justify-content: center;
+  padding: 0;
+  width: 38px;
 }
 
 .new-chat-btn:hover {
   background: var(--lf-blue-dark);
 }
 
+.sidebar-toggle:hover { background: #eef3f8; }
+
 .chat-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   overflow-y: auto;
 }
 
+.plan-panel {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.plan-heading {
+  color: var(--lf-blue-dark);
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.plan-progress, .plan-empty-copy, .plan-date {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0 0 10px;
+}
+
+.plan-phase {
+  color: var(--lf-blue-dark);
+  font-size: 11px;
+  font-weight: 700;
+  margin: 13px 0 5px;
+  text-transform: uppercase;
+}
+
+.plan-task {
+  align-items: flex-start;
+  display: flex;
+  gap: 7px;
+  margin: 7px 0;
+}
+
+.plan-task input { margin: 3px 0 0; }
+
+.plan-task-label { cursor: pointer; display: block; min-width: 0; }
+
+.plan-task-title { display: block; font-size: 12px; line-height: 1.25; }
+.plan-task.done .plan-task-title { color: var(--text-muted); text-decoration: line-through; }
+.plan-task-meta { color: var(--text-muted); display: block; font-size: 10px; margin-top: 2px; }
+
+.plan-create-btn {
+  background: white;
+  border: 1px solid var(--lf-blue);
+  border-radius: 7px;
+  color: var(--lf-blue);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px;
+  width: 100%;
+}
+
+.plan-create-btn:hover { background: #eef3f8; }
+
 .chat-item {
-  padding: 8px 10px;
-  border-radius: 6px;
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 16px 6px 10px;
+  border-radius: 7px;
   font-size: 13px;
   color: var(--text-main);
+  position: relative;
+}
+
+.chat-item-title {
+  color: inherit;
   cursor: pointer;
+  flex: 1;
+  font: inherit;
+  line-height: 1.35;
+  min-width: 0;
   overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.chat-item-title:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--lf-blue);
+  outline-offset: 2px;
+}
+
+/* Small delete control tucked into the item's top-right corner; only
+   shown when the chat is hovered or the button has keyboard focus. */
+.chat-delete-btn {
+  align-items: center;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  height: 14px;
+  justify-content: center;
+  line-height: 1;
+  opacity: 0;
+  padding: 0 0 1px;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  transition: opacity 120ms ease;
+  width: 14px;
+}
+
+.chat-item:hover .chat-delete-btn,
+.chat-delete-btn:focus-visible {
+  opacity: 1;
+}
+
+.chat-delete-btn:hover { background: #fbe9ea; border-color: var(--lf-red); color: var(--lf-red); }
 
 .chat-item:hover {
   background: var(--bg);
@@ -788,6 +923,11 @@ body.widget-compact .sidebar {
     min-width: 84px;
     padding: 8px 6px;
   }
+  .sidebar.sidebar-expanded {
+    width: 84px;
+    min-width: 84px;
+  }
+  .sidebar-toolbar { gap: 4px; }
   .new-chat-btn {
     font-size: 0;
     padding: 10px 0;
@@ -799,6 +939,8 @@ body.widget-compact .sidebar {
   .chat-item {
     font-size: 11px;
   }
+  .sidebar-toggle { font-size: 15px; width: 30px; }
+  .plan-panel { display: none; }
 }
 
 @media (max-width: 480px) {

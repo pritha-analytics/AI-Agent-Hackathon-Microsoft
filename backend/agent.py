@@ -538,7 +538,9 @@ def _wants_case_status(history: list[dict]) -> bool:
 
 
 
-def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[str], dict]:
+def run_agent(
+    history: list[dict], lang: str | None = None, plan_context: str | None = None
+) -> tuple[str, list[str], dict]:
     if wants_human_contact(history):
         reply, suggestions, extra = contact_menu_response(lang)
         return reply, suggestions, extra
@@ -551,6 +553,17 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
         return run_fraud_dispute_agent(history, lang, fraud_or_dispute)
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if plan_context:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"{plan_context}\n"
+                    "The backend, not you, updates plan status from explicit customer statements. "
+                    "Follow the next-task ordering exactly when discussing priorities."
+                ),
+            }
+        )
     if lang in LANGUAGE_NAMES:
         # A UI language toggle, not a hard override: the LANGUAGE RULE above
         # (always match what the user actually typed) still wins whenever

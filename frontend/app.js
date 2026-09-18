@@ -13,8 +13,11 @@ let greetingTextEl = document.getElementById("greeting-text");
 const sendBtn = document.getElementById("send-btn");
 const homeBtn = document.getElementById("home-btn");
 const newChatBtn = document.getElementById("new-chat-btn");
+const sidebarToggleEl = document.getElementById("sidebar-toggle");
 const chatListEl = document.getElementById("chat-list");
 const chatShellEl = document.querySelector(".chat-shell");
+const sidebarEl = document.querySelector(".sidebar");
+const planPanelEl = document.getElementById("plan-panel");
 
 // The toggle sets the UI language and is a fallback for ambiguous messages,
 // but the backend still matches whatever language the user actually types
@@ -172,6 +175,140 @@ let sessionId =
     sessionStorage.setItem("ltn-session-id", id);
     return id;
   })();
+
+function applySidebarWidth(expanded) {
+  sidebarEl.classList.toggle("sidebar-expanded", expanded);
+  sidebarToggleEl.setAttribute("aria-label", expanded ? "Collapse sidebar" : "Expand sidebar");
+  sidebarToggleEl.title = expanded ? "Collapse sidebar" : "Expand sidebar";
+  sidebarToggleEl.textContent = expanded ? "⇐" : "⇒";
+}
+
+sidebarToggleEl.addEventListener("click", () => {
+  const expanded = !sidebarEl.classList.contains("sidebar-expanded");
+  localStorage.setItem("ltn-sidebar-expanded", String(expanded));
+  applySidebarWidth(expanded);
+});
+
+const PLAN_PHASE_LABELS = {
+  this_week: "This week",
+  before_move_in: "Before move-in",
+  later: "Later",
+};
+
+function clearPlanPanel() {
+  planPanelEl.innerHTML = "";
+}
+
+function renderEmptyPlan() {
+  clearPlanPanel();
+  const heading = document.createElement("h2");
+  heading.className = "plan-heading";
+  heading.textContent = "My transition plan";
+  const copy = document.createElement("p");
+  copy.className = "plan-empty-copy";
+  copy.textContent = "Buying a home? Create a checklist you can update as you go.";
+  const button = document.createElement("button");
+  button.className = "plan-create-btn";
+  button.type = "button";
+  button.textContent = "Create home-purchase plan";
+  button.addEventListener("click", createHomePurchasePlan);
+  planPanelEl.append(heading, copy, button);
+}
+
+function renderPlan(plan) {
+  clearPlanPanel();
+  const heading = document.createElement("h2");
+  heading.className = "plan-heading";
+  heading.textContent = plan.event_title;
+  const completed = plan.tasks.filter((task) => task.status === "done").length;
+  const progress = document.createElement("p");
+  progress.className = "plan-progress";
+  progress.textContent = `${completed} / ${plan.tasks.length} complete`;
+  planPanelEl.append(heading, progress);
+  if (plan.key_date) {
+    const date = document.createElement("p");
+    date.className = "plan-date";
+    date.textContent = `Key date: ${plan.key_date}`;
+    planPanelEl.appendChild(date);
+  }
+
+  for (const phase of ["this_week", "before_move_in", "later"]) {
+    const tasks = plan.tasks.filter((task) => task.phase === phase);
+    if (!tasks.length) continue;
+    const phaseHeading = document.createElement("h3");
+    phaseHeading.className = "plan-phase";
+    phaseHeading.textContent = PLAN_PHASE_LABELS[phase];
+    planPanelEl.appendChild(phaseHeading);
+    tasks.forEach((task) => {
+      const row = document.createElement("div");
+      row.className = `plan-task${task.status === "done" ? " done" : ""}`;
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = task.status === "done";
+      checkbox.id = `plan-${task.id}`;
+      checkbox.addEventListener("change", () => updatePlanTask(task.id, checkbox.checked, checkbox));
+      const label = document.createElement("label");
+      label.className = "plan-task-label";
+      label.htmlFor = checkbox.id;
+      label.title = task.description;
+      const title = document.createElement("span");
+      title.className = "plan-task-title";
+      title.textContent = task.title;
+      const meta = document.createElement("span");
+      meta.className = "plan-task-meta";
+      meta.textContent = task.due_date ? `Due ${task.due_date}` : task.priority + " priority";
+      label.append(title, meta);
+      row.append(checkbox, label);
+      planPanelEl.appendChild(row);
+    });
+  }
+}
+
+async function loadPlan() {
+  try {
+    const res = await fetch(`/api/plans/session/${sessionId}`);
+    if (res.status === 404) {
+      renderEmptyPlan();
+      return;
+    }
+    if (!res.ok) throw new Error(`Plan request failed: ${res.status}`);
+    renderPlan(await res.json());
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function createHomePurchasePlan() {
+  try {
+    const res = await fetch("/api/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, event_type: "home_purchase" }),
+    });
+    if (!res.ok) throw new Error(`Plan creation failed: ${res.status}`);
+    renderPlan(await res.json());
+    addBubble("system-note", "Your home-purchase plan is ready. Tell Sara your move-in date when you know it.");
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function updatePlanTask(taskId, checked, checkbox) {
+  checkbox.disabled = true;
+  try {
+    const res = await fetch(`/api/plans/session/${sessionId}/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: checked ? "done" : "todo" }),
+    });
+    if (!res.ok) throw new Error(`Plan update failed: ${res.status}`);
+    renderPlan(await res.json());
+  } catch (err) {
+    checkbox.checked = !checked;
+    checkbox.disabled = false;
+    console.error(err);
+  }
+}
 
 function escapeHtml(str) {
   return str
@@ -674,6 +811,13 @@ async function getAssistantReply() {
     upsertChatListEntry();
     addSuggestions(data.suggestions, data.human_chat_option);
     addForm(data.form);
+    if (data.plan_updates && data.plan_updates.length) {
+      addBubble(
+        "system-note",
+        `Marked complete in your plan: ${data.plan_updates.join(", ")}.`
+      );
+    }
+    loadPlan();
   } catch (err) {
     pending.textContent = t().chatError;
     pending.className = "msg assistant";
@@ -1031,10 +1175,51 @@ function renderChatList() {
   for (const chat of list) {
     const item = document.createElement("div");
     item.className = "chat-item" + (chat.id === sessionId ? " active" : "");
-    item.textContent = chat.title || "Chat";
-    item.title = chat.title || "Chat";
-    item.addEventListener("click", () => loadChat(chat.id));
+    const title = document.createElement("div");
+    title.className = "chat-item-title";
+    title.textContent = chat.title || "Chat";
+    title.title = chat.title || "Chat";
+    title.setAttribute("role", "button");
+    title.tabIndex = 0;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "chat-delete-btn";
+    remove.title = "Delete chat";
+    remove.setAttribute("aria-label", `Delete chat: ${chat.title || "Chat"}`);
+    remove.textContent = "×";
+    title.addEventListener("click", () => loadChat(chat.id));
+    title.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        loadChat(chat.id);
+      }
+    });
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteChat(chat.id, chat.title || "Chat");
+    });
+    item.append(title, remove);
     chatListEl.appendChild(item);
+  }
+}
+
+async function deleteChat(chatId, title) {
+  const confirmed = window.confirm(
+    `Delete “${title}”? This removes its chat transcript and transition plan from this demo.`
+  );
+  if (!confirmed) return;
+  try {
+    const response = await fetch(`/api/sessions/${chatId}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(`Chat deletion failed: ${response.status}`);
+    saveChatList(loadChatList().filter((chat) => chat.id !== chatId));
+    if (chatId === sessionId) {
+      startNewChat();
+    } else {
+      renderChatList();
+    }
+  } catch (err) {
+    console.error(err);
+    window.alert("Could not delete this chat. Please try again.");
   }
 }
 
@@ -1068,6 +1253,7 @@ function startNewChat() {
   sessionId = crypto.randomUUID();
   sessionStorage.setItem("ltn-session-id", sessionId);
   resetChatView();
+  renderEmptyPlan();
   renderChatList();
 }
 
@@ -1127,6 +1313,7 @@ async function loadChat(id) {
         });
       }
     }
+    await loadPlan();
     renderChatList();
   } catch (err) {
     console.error(err);
@@ -1157,4 +1344,6 @@ homeBtn.addEventListener("keydown", (e) => {
 newChatBtn.addEventListener("click", startNewChat);
 
 applyLanguage(currentLang);
+applySidebarWidth(localStorage.getItem("ltn-sidebar-expanded") === "true");
 renderChatList();
+loadPlan();

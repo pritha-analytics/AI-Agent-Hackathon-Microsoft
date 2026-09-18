@@ -26,8 +26,12 @@
 
   <div class="app-shell">
     <aside class="sidebar">
-      <button id="new-chat-btn" class="new-chat-btn" type="button">+ New chat</button>
+      <div class="sidebar-toolbar">
+        <button id="new-chat-btn" class="new-chat-btn" type="button">+ New chat</button>
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Expand sidebar" title="Expand sidebar">⇔</button>
+      </div>
       <div id="chat-list" class="chat-list"></div>
+      <section id="plan-panel" class="plan-panel" aria-live="polite"></section>
     </aside>
 
     <main class="chat-shell">

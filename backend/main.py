@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import audit, cs_client
 from .agent import run_agent
+from .plans import plans
 from .sessions import sessions
 from .uploads import extract_text
 
@@ -21,6 +22,15 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def prevent_stale_frontend_assets(request: Request, call_next):
+    """A single-page demo can otherwise keep an old app.js after a backend restart."""
+    response = await call_next(request)
+    if request.url.path in {"/", "/index.html", "/app.js", "/style.css"}:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -65,16 +75,66 @@ class AssignAgent(BaseModel):
     agent_name: str
 
 
+class CreatePlanRequest(BaseModel):
+    session_id: str
+    event_type: str = "home_purchase"
+    event_title: str = "My home purchase"
+    key_date: str | None = None
+
+
+class UpdateTaskRequest(BaseModel):
+    status: str
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest) -> dict:
     history = [m.model_dump() for m in req.messages]
-    reply, suggestions, extra = run_agent(history, lang=req.lang)
+    completed_plan_tasks = []
+    if req.session_id and history:
+        completed_plan_tasks = plans.complete_explicitly_reported_tasks(
+            req.session_id, history[-1]["content"]
+        )
+    reply, suggestions, extra = run_agent(
+        history, lang=req.lang, plan_context=plans.context_for_session(req.session_id)
+    )
 
     if req.session_id and history:
         sessions.add_message(req.session_id, "user", history[-1]["content"])
         sessions.add_message(req.session_id, "assistant", reply)
 
-    return {"role": "assistant", "content": reply, "suggestions": suggestions, **extra}
+    return {
+        "role": "assistant",
+        "content": reply,
+        "suggestions": suggestions,
+        "plan_updates": completed_plan_tasks,
+        **extra,
+    }
+
+
+@app.get("/api/plans/session/{session_id}")
+def get_plan_for_session(session_id: str) -> dict:
+    plan = plans.get_for_session(session_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="No transition plan exists for this session")
+    return plan
+
+
+@app.post("/api/plans")
+def create_plan(body: CreatePlanRequest) -> dict:
+    try:
+        return plans.create(body.session_id, body.event_type, body.event_title, body.key_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.patch("/api/plans/session/{session_id}/tasks/{task_id}")
+def update_plan_task(session_id: str, task_id: str, body: UpdateTaskRequest) -> dict:
+    try:
+        return plans.update_task(session_id, task_id, body.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/upload")
@@ -148,6 +208,14 @@ def get_session(session_id: str) -> dict:
     if session is None:
         raise HTTPException(status_code=404, detail="Unknown session")
     return session
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str) -> dict:
+    """Delete this demo's transient transcript and the transition plan linked to it."""
+    session_deleted = sessions.delete(session_id)
+    plan_deleted = plans.delete_for_session(session_id)
+    return {"ok": True, "session_deleted": session_deleted, "plan_deleted": plan_deleted}
 
 
 @app.post("/api/sessions/{session_id}/human-message")
