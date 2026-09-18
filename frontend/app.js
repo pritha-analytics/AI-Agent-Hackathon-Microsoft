@@ -567,6 +567,33 @@ function addSuggestions(suggestions, humanChatOption) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// --- Link shown in chat after a confirmed form is saved via POST /api/forms ---
+
+function addFormSavedLink(url) {
+  const div = document.createElement("div");
+  div.className = "msg form-saved-note";
+  const link = document.createElement("a");
+  link.className = "form-saved-link";
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.textContent = currentLang === "sv" ? "Visa inlämnad ansökan →" : "View submitted form →";
+  div.appendChild(link);
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function addFormSaveError() {
+  const div = document.createElement("div");
+  div.className = "msg form-save-error";
+  div.textContent =
+    currentLang === "sv"
+      ? "Kunde inte spara ansökan — försök igen"
+      : "Could not save the form — please try again";
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 // --- Inline structured form (e.g. fraud/dispute follow-up questions) ---
 //
 // The backend can't reliably free-parse an answer to "suspected place of
@@ -604,6 +631,7 @@ function addForm(form) {
 
   const values = {};
   let formSubmitted = false;
+  let formSaved = false; // guards against POSTing the same confirmed form twice
 
   if (form.title) {
     const title = document.createElement("h3");
@@ -696,6 +724,32 @@ function addForm(form) {
     submitBtn.remove();
   }
 
+  async function saveForm() {
+    if (formSaved) return;
+    formSaved = true;
+    try {
+      const res = await fetch("/api/forms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          title: form.title || "Insurance application",
+          fields: form.fields.map((f) => ({
+            name: f.name,
+            label: f.label,
+            value: values[f.name] || "",
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+      const data = await res.json();
+      addFormSavedLink(data.url);
+    } catch (err) {
+      console.error(err);
+      addFormSaveError();
+    }
+  }
+
   renderEditableFields();
 
   wrapper.addEventListener("submit", (e) => {
@@ -710,6 +764,7 @@ function addForm(form) {
       .join("\n");
     formSubmitted = true;
     renderSummary();
+    saveForm();
     sendMessage(composed);
   });
 
@@ -724,10 +779,12 @@ function addForm(form) {
       if (formSubmitted) return;
       formSubmitted = true;
       renderSummary();
+      saveForm();
     },
     markEditable() {
       if (!formSubmitted) return;
       formSubmitted = false;
+      formSaved = false;
       renderEditableFields();
     },
   };
