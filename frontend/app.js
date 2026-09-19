@@ -13,10 +13,8 @@ let greetingTextEl = document.getElementById("greeting-text");
 const sendBtn = document.getElementById("send-btn");
 const homeBtn = document.getElementById("home-btn");
 const newChatBtn = document.getElementById("new-chat-btn");
-const sidebarToggleEl = document.getElementById("sidebar-toggle");
 const chatListEl = document.getElementById("chat-list");
 const chatShellEl = document.querySelector(".chat-shell");
-const sidebarEl = document.querySelector(".sidebar");
 const planPanelEl = document.getElementById("plan-panel");
 
 // The toggle sets the UI language and is a fallback for ambiguous messages,
@@ -175,19 +173,6 @@ let sessionId =
     sessionStorage.setItem("ltn-session-id", id);
     return id;
   })();
-
-function applySidebarWidth(expanded) {
-  sidebarEl.classList.toggle("sidebar-expanded", expanded);
-  sidebarToggleEl.setAttribute("aria-label", expanded ? "Collapse sidebar" : "Expand sidebar");
-  sidebarToggleEl.title = expanded ? "Collapse sidebar" : "Expand sidebar";
-  sidebarToggleEl.textContent = expanded ? "⇐" : "⇒";
-}
-
-sidebarToggleEl.addEventListener("click", () => {
-  const expanded = !sidebarEl.classList.contains("sidebar-expanded");
-  localStorage.setItem("ltn-sidebar-expanded", String(expanded));
-  applySidebarWidth(expanded);
-});
 
 const PLAN_PHASE_LABELS = {
   this_week: "This week",
@@ -1344,6 +1329,5 @@ homeBtn.addEventListener("keydown", (e) => {
 newChatBtn.addEventListener("click", startNewChat);
 
 applyLanguage(currentLang);
-applySidebarWidth(localStorage.getItem("ltn-sidebar-expanded") === "true");
 renderChatList();
 loadPlan();
