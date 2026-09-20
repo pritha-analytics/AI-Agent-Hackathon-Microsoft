@@ -1302,6 +1302,22 @@ function addForm(form) {
   let formSubmitted = false;
   let formSaved = false; // guards against POSTing the same confirmed form twice
 
+  // BankID already verified the customer's identity before this form is shown,
+  // so on the document-filled form the personnummer is not rendered again (see
+  // renderEditableFields / renderSummary). It is still kept in `values` so it is
+  // submitted, saved and shown in the CS viewer -- and pre-seeded when the
+  // document had none, so the "all fields filled" check can't block submitting.
+  const hidesPersonnummer = form.type === "customer_details";
+  if (hidesPersonnummer) {
+    const idField = form.fields.find((f) => f.name === "personnummer");
+    if (idField) {
+      values.personnummer =
+        idField.value !== null && idField.value !== undefined && String(idField.value).trim()
+          ? String(idField.value)
+          : "BankID-verified";
+    }
+  }
+
   if (form.title) {
     const title = document.createElement("h3");
     title.textContent = form.title;
@@ -1322,6 +1338,7 @@ function addForm(form) {
   function renderEditableFields() {
     fieldsContainer.innerHTML = "";
     for (const field of form.fields) {
+      if (hidesPersonnummer && field.name === "personnummer") continue;
       const fieldEl = document.createElement("div");
       fieldEl.className = "inline-form-field";
 
@@ -1384,6 +1401,13 @@ function addForm(form) {
       label.textContent = field.label;
       const value = document.createElement("span");
       value.className = "inline-form-summary-value";
+      if (hidesPersonnummer && field.name === "personnummer") {
+        label.textContent = currentLang === "sv" ? "Personnummer" : "Personal ID number";
+        value.textContent = currentLang === "sv" ? "Verifierat via BankID" : "Verified via BankID";
+        row.append(label, value);
+        fieldsContainer.appendChild(row);
+        continue;
+      }
       value.textContent = maskPersonnummer(values[field.name]) || "—";
       row.append(label, value);
       fieldsContainer.appendChild(row);
