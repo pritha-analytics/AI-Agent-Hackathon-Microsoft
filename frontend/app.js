@@ -1364,19 +1364,6 @@ function addForm(form) {
         input.addEventListener("input", () => {
           values[field.name] = input.value;
         });
-        if (field.name === "personnummer") {
-          // Full number while focused, masked once the user moves on. Only the
-          // visible text changes: `values` (read by the submit handler and
-          // saveForm) always keeps the full number, and setting input.value
-          // from code doesn't fire "input", so the mask can't leak into it.
-          input.value = maskPersonnummer(input.value);
-          input.addEventListener("focus", () => {
-            input.value = values[field.name] || "";
-          });
-          input.addEventListener("blur", () => {
-            input.value = maskPersonnummer(values[field.name]) || "";
-          });
-        }
         fieldEl.appendChild(input);
       }
 
