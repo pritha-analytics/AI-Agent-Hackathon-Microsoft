@@ -82,6 +82,7 @@ const I18N = {
     supportLabel: "LF Bergslagen · Support",
     aiLabel: "Sara · Digital Companion",
     thinking: "Thinking...",
+    authComplete: "Authentication Complete",
     uploadError: "Couldn't read one of those files. Try files under 5MB each.",
     chatError: "Something went wrong reaching the navigator. Please try again.",
     speechLang: "en-US",
@@ -157,6 +158,7 @@ const I18N = {
     supportLabel: "LF Bergslagen · Support",
     aiLabel: "Sara · Digital följeslagare",
     thinking: "Tänker...",
+    authComplete: "Autentisering slutförd",
     uploadError: "Kunde inte läsa en av filerna. Prova filer under 5 MB styck.",
     chatError: "Något gick fel. Försök igen.",
     speechLang: "sv-SE",
@@ -711,6 +713,21 @@ function addBubble(role, text, { markdown = false, label = "", speakable = false
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return div;
 }
+
+// Small muted status bubble styled like the auth card above it. Inserted
+// before `before` when given, otherwise appended.
+function addStatusMessage(text, before = null) {
+  const div = document.createElement("div");
+  div.className = "chat-status-message";
+  div.textContent = text;
+  messagesEl.insertBefore(div, before);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// Set by the auth card's Continue click; consumed by the next
+// getAssistantReply so "Authentication Complete" shows once per chat session.
+let authStatusPending = false;
+const authStatusShownFor = new Set();
 
 // Which family a file belongs to, used both to pick an icon and to decide
 // how (or whether) the browser can actually render the original file.
@@ -1500,6 +1517,7 @@ function addAuthChoice(form) {
     continueBtn.disabled = true;
     wrapper.classList.add("auth-choice-submitted");
     const chosen = form.options.find((option) => option.value === selected);
+    authStatusPending = !authStatusShownFor.has(sessionId);
     sendMessage(chosen ? chosen.message : selected);
   });
   wrapper.appendChild(continueBtn);
@@ -1771,6 +1789,8 @@ function resetRatingWidget() {
 
 async function getAssistantReply() {
   const pending = addBubble("assistant pending", t().thinking, { label: t().aiLabel });
+  const showAuthStatus = authStatusPending;
+  authStatusPending = false;
   inputEl.disabled = true;
   sendBtn.disabled = true;
 
@@ -1786,6 +1806,10 @@ async function getAssistantReply() {
     }
 
     const data = await res.json();
+    if (showAuthStatus) {
+      authStatusShownFor.add(sessionId);
+      addStatusMessage(t().authComplete, pending);
+    }
     pending.innerHTML = "";
     const labelEl = document.createElement("span");
     labelEl.className = "msg-label";
@@ -1800,7 +1824,8 @@ async function getAssistantReply() {
     history.push({ role: "assistant", content: data.content });
     sessionMessageCount += 2; // the server just appended one user + one assistant message
     upsertChatListEntry();
-    addSuggestions(data.suggestions, data.human_chat_option);
+    // The auth card is the interaction; its BankID chip would just duplicate it.
+    addSuggestions(data.form?.type === "auth_choice" ? [] : data.suggestions, data.human_chat_option);
     if (activeForm && !activeForm.submitted && FORM_CONFIRM_REPLY_RE.test(data.content)) {
       // The backend forces a tool call on the first round of every turn, which
       // sometimes makes it re-invoke fill_customer_form on this very

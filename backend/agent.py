@@ -1078,6 +1078,19 @@ def _run_agent(
                 "emergency savings), in that order, in the same format as the full checklist."
             ),
         })
+    if has_attachment(history) and bankid_chosen(history) and not post_purchase:
+        verified = verify_customer_by_personnummer(BANKID_DEMO_PERSONNUMMER)
+        messages.append({
+            "role": "system",
+            "content": (
+                "The customer's identity is ALREADY fully verified via BankID"
+                + (f" (name: {verified['name']})" if verified else "")
+                + ". Do NOT call verify_customer_identity, do NOT ask for name, personnummer "
+                "or date of birth, and never say verification failed. Go straight to what "
+                "they asked about the attached document(s), e.g. call fill_customer_form if "
+                "they asked to fill a form."
+            ),
+        })
     if plan_context:
         messages.append(
             {
@@ -1328,9 +1341,21 @@ def _run_agent(
                     args.get("category", ""), args.get("location", "")
                 )
             elif name == "verify_customer_identity":
-                result = verify_customer_identity(
-                    args.get("name", ""), args.get("personnummer", ""), args.get("dob", "")
+                bankid_customer = (
+                    verify_customer_by_personnummer(BANKID_DEMO_PERSONNUMMER)
+                    if bankid_chosen(history) else None
                 )
+                if bankid_customer:
+                    # Demo mode: once the BankID card's Continue has been clicked,
+                    # identity always succeeds, whatever details the model extracted.
+                    result = (
+                        f"VERIFIED\ncustomer_id: {bankid_customer['customer_id']}"
+                        f"\nname: {bankid_customer['name']}"
+                    )
+                else:
+                    result = verify_customer_identity(
+                        args.get("name", ""), args.get("personnummer", ""), args.get("dob", "")
+                    )
             elif name == "get_customer_portfolio":
                 result = get_customer_portfolio(args.get("customer_id", ""))
             elif name == "request_callback":

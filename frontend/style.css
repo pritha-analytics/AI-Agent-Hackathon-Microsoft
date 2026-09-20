@@ -986,6 +986,18 @@ body.sidebar-collapsed #sidebar-show-btn {
   padding: 2px 8px;
 }
 
+.chat-status-message {
+  align-self: flex-start;
+  max-width: min(420px, 85%);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .msg.attachment {
   background: #eef3f8;
   border: 1px dashed #b9c9dc;
