@@ -21,3 +21,5 @@ cs-service/target/
 # Local Java runtime database
 cs-service/data/
 
+_design-refs/
+frontend_refs/
