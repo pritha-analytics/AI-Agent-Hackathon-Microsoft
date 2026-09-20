@@ -1,0 +1,114 @@
+/* Shared "friendly audit event" detail-view styles, paired with
+   audit-render.js - used by both audit.html's timeline cards and the AI
+   Hub dashboard's Audit History modal. Deliberately just the event-card
+   internals (title/badge/highlights/raw-details), not page chrome like
+   .topbar/.shell/.brand - those differ per page and live in each page's
+   own stylesheet, so this file is safe to load alongside either. */
+
+.event-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.event-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.event-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.event-agent {
+  color: var(--lf-blue);
+  font-weight: 700;
+}
+
+.event-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.event-customer {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.event-decision {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: white;
+  background: var(--lf-blue);
+}
+
+.event-decision.decision-approve,
+.event-decision.decision-verified {
+  background: var(--lf-green);
+}
+
+.event-decision.decision-decline,
+.event-decision.decision-notverified {
+  background: var(--lf-red);
+}
+
+.event-decision.decision-manualreview,
+.event-decision.decision-needsreview {
+  background: var(--lf-amber);
+}
+
+.event-decision.decision-approvedtooperations {
+  background: var(--lf-green);
+}
+
+.event-highlights {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px 16px;
+}
+
+.event-highlights li {
+  color: var(--text-main);
+}
+
+.event-highlights .hl-label {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.event-details {
+  margin-top: 8px;
+}
+
+.event-details summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--lf-blue);
+}
+
+.event-details pre {
+  margin: 8px 0 0;
+  background: #f2f4f7;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

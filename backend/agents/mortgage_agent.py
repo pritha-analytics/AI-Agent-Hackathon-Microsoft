@@ -30,7 +30,7 @@ from ..knowledge import LF_PAGES, MOCK_CUSTOMERS
 from ..link_safety import URL_RE, strip_unverified_links
 from ..llm_client import client
 from ..suggestions import generate_suggestions
-from ..tools import fetch_lf_page, verify_customer_identity
+from ..tools import fetch_lf_page, verify_customer_by_personnummer, verify_customer_identity
 from . import credit_agent, document_agent, loan_calc
 
 MAX_TOOL_ROUNDS = 8
@@ -53,24 +53,54 @@ LOAN_OFFER_KEYWORDS = [
     "ansöka om låneerbjudande", "vill ha ett låneerbjudande",
 ]
 
+# A bare mention of "loan promise"/"lånelöfte" (or the loan-offer
+# equivalent) is treated as application intent below - but "What is
+# Lånelöfte?" is a customer asking for an EXPLANATION, not to start
+# verifying their identity and applying. Matched against the start of the
+# message (after stripping leading whitespace/punctuation) since a
+# question phrased this way always leads with one of these forms.
+CLARIFYING_QUESTION_RE = re.compile(
+    r"^\s*(what('| i)?s|what does|explain|tell me about|how does|how do(es)? .* work|"
+    r"vad är|vad betyder|förklara|hur fungerar)\b",
+    re.IGNORECASE,
+)
+
+
+def _mentions_application_intent(history: list[dict], bare_terms: list[str], keyword_phrases: list[str]) -> bool:
+    """True if some user message signals wanting to actually START an
+    application - either one of the specific keyword_phrases (which already
+    read as a request, e.g. "apply for a loan promise"), or a bare mention
+    of the product name/term (bare_terms) in a message that isn't just
+    asking what it means (see CLARIFYING_QUESTION_RE) - a customer's own
+    wording varies too much for a fixed phrase list to cover every way of
+    asking for one, but "what is X" is a distinct, detectable shape."""
+    user_messages = [m.get("content", "") for m in history if m.get("role") == "user"]
+    combined = " ".join(user_messages).lower()
+    if any(kw in combined for kw in keyword_phrases):
+        return True
+    for msg in user_messages:
+        text = msg.lower()
+        if any(term in text for term in bare_terms) and not CLARIFYING_QUESTION_RE.match(msg.strip()):
+            return True
+    return False
+
 # Exact phrases each flow is instructed to include verbatim at each of its
 # possible endpoints - lets Sara/this file detect from plain conversation
 # history whether a flow already finished, without needing separate session
 # state (tool results aren't retained between turns - see the note in each
 # system prompt below). Kept distinct per flow so a review/decline from one
 # application type never gets mistaken for the other's resolution.
-LOAN_PROMISE_RESOLVED_MARKERS = (
-    "Loan Promise (Lånelöfte)",
-    "loan promise application has been sent to a Customer Advisor",
-    "unable to proceed with this loan promise application",
-)
+LOAN_PROMISE_RESOLVED_MARKERS = ("Loan Promise case has been created",)
 LOAN_OFFER_RESOLVED_MARKERS = (
-    "Loan Offer for",
+    "eligible for the loan",
     "loan offer application has been sent to a Customer Advisor",
     "unable to proceed with this loan offer application",
 )
 
-ATTACHMENT_RE = re.compile(r"^\[Attached document:\s*(.+?)\]\n\n(.*)$", re.DOTALL)
+ATTACHMENT_RE = re.compile(
+    r"\[Attached document:\s*(.+?)\]\n\n(.*?)(?=\n\n\[Attached document:|\Z)",
+    re.DOTALL,
+)
 
 # The identity ask used to be free-form LLM text, paired with LLM-generated
 # suggestion chips like "My full name is..." - which looked like real
@@ -89,31 +119,137 @@ IDENTITY_FORM = {
     ],
 }
 ASK_IDENTITY_TEXT = {
-    "loan_promise": {
-        "en": (
-            "I'm the mortgage specialist Sara connected you with. To start your Loan "
-            "Promise (Lånelöfte) application, I need to verify your identity - please "
-            "fill in your details below."
-        ),
-        "sv": (
-            "Jag är bolånespecialisten som Sara kopplade dig till. För att starta din "
-            "ansökan om lånelöfte behöver jag verifiera din identitet - fyll i dina "
-            "uppgifter nedan."
-        ),
-    },
+    # loan_promise no longer uses this - it authenticates via BankID only,
+    # see AUTH_CHOICE_TEXT below.
     "loan_offer": {
         "en": (
-            "I'm the mortgage specialist Sara connected you with. To start your Loan "
-            "Offer application, I need to verify your identity - please fill in your "
-            "details below."
+            "To start your Loan Offer application, I need to verify your identity - "
+            "please fill in your details below."
         ),
         "sv": (
-            "Jag är bolånespecialisten som Sara kopplade dig till. För att starta din "
-            "ansökan om låneerbjudande behöver jag verifiera din identitet - fyll i "
-            "dina uppgifter nedan."
+            "För att starta din ansökan om låneerbjudande behöver jag verifiera din "
+            "identitet - fyll i dina uppgifter nedan."
         ),
     },
 }
+
+# Every Loan Promise request authenticates via BankID only - no personnummer
+# form alternative. Deterministic gate, not an LLM-generated choice, for the
+# same reliability reason as IDENTITY_FORM above (which loan_offer still
+# uses; loan_promise no longer does).
+AUTH_CHOICE_TEXT = {
+    "loan_promise": {
+        # Deliberately "Lånelöfte (Loan Promise)", not "Loan Promise (Lånelöfte)" -
+        # the latter is a LOAN_PROMISE_RESOLVED_MARKERS string reserved for the
+        # flow's actual final heading, and reusing it here made
+        # loan_promise_flow_resolved() see this introductory line and treat the
+        # whole application as already finished one turn in.
+        "en": (
+            "To start your Lånelöfte (Loan Promise) application, I first need to "
+            "verify your identity via BankID."
+        ),
+        "sv": (
+            "För att starta din ansökan om lånelöfte behöver jag först verifiera din "
+            "identitet via BankID."
+        ),
+    },
+}
+AUTH_CHOICE_SUGGESTIONS = {
+    "en": ["Authenticate with BankID"],
+    "sv": ["Autentisera med BankID"],
+}
+BANKID_KEYWORD = "bankid"
+
+# Styled card the frontend renders instead of a generic text-field form (see
+# AUTH_CHOICE_FORM's "auth_choice" type in app.js) - a single BankID action
+# mirroring a real Swedish bank login screen's BankID option. Pressing
+# Continue sends the option's own "message" text as the next chat message,
+# which _bankid_chosen below detects exactly like a clicked suggestion chip
+# would.
+AUTH_CHOICE_FORM = {
+    "type": "auth_choice",
+    "heading": {"en": "Verify your identity", "sv": "Verifiera din identitet"},
+    "options": [
+        {
+            "value": "bankid",
+            "label": "BankID",
+            "helper": {
+                "en": "Choose BankID for a secure and personal experience.",
+                "sv": "Välj BankID för en säker och personlig upplevelse.",
+            },
+            "message": "Authenticate with BankID",
+        },
+    ],
+    "default": "bankid",
+    "continue_label": {"en": "Continue", "sv": "Gå vidare"},
+}
+
+# This is a demo/hackathon prototype with no real BankID integration, so
+# "authenticating with BankID" is simulated as a one-click confirmation
+# against a single fixed mock customer, rather than asking the customer to
+# type a personnummer (which would just be a manual-entry form wearing a
+# BankID label). Real BankID never asks for a personnummer either - the
+# app/QR flow already knows who is confirming.
+BANKID_DEMO_PERSONNUMMER = "19850312-1234"  # Anna Andersson, CUST-1001
+
+# The document-review step's message. run_loan_promise_agent returns this
+# directly, deterministically - the entire post-identity Loan Promise flow
+# needs no LLM call at all any more (see the long comment in that function).
+# run_loan_offer_agent still runs its phase A through a tool-calling loop
+# (with assess/rate/terms/review-case excluded from its tool list, same
+# LOAN_OFFER_PHASE_A_TOOLS reasoning as before) and uses this as a fallback
+# if that ever slips and fabricates a plausible-looking result as plain
+# text with zero tool calls behind it (tool_choice is "auto", not
+# "required", so nothing stops a model from just not calling any tool).
+PHASE_A_READY_TEXT = {
+    "en": "I've read your documents - the extracted details are ready for you to review below.",
+    "sv": "Jag har läst dina dokument - de extraherade uppgifterna är redo för dig att granska nedan.",
+}
+
+# Phase B's outcome, filled in with the real case ID from
+# cs_client.create_case_with_fallback - see run_loan_promise_agent. Fixed,
+# deterministic text for the same reliability reason as PHASE_A_READY_TEXT:
+# an LLM asked to compose this itself would occasionally fabricate a full
+# instant decision instead (specific loan amount, rate, monthly payment)
+# even with no tool call or real number behind any of it.
+PHASE_B_CASE_CREATED_TEXT = {
+    "en": (
+        "Thank you - I've reviewed your submitted details. An LF Bergslagen mortgage "
+        "specialist will look at your application and reach out to you directly. Your Loan "
+        "Promise case has been created - case ID: {case_id}. Is there anything else I can help "
+        "you with today?"
+    ),
+    "sv": (
+        "Tack - jag har granskat dina inskickade uppgifter. En bolånespecialist på LF "
+        "Bergslagen kommer att granska din ansökan och kontakta dig direkt. Ditt "
+        "lånelöfte-ärende har skapats - ärende-ID: {case_id}. Kan jag hjälpa dig med något "
+        "annat idag?"
+    ),
+}
+
+
+def _document_review_summary(extraction: dict) -> dict:
+    """The document_review extra sent to the frontend - a plain summary of
+    what extraction found, independent of whatever the review form's own
+    fields look like."""
+    return {
+        "income_statement": extraction.get("income_statement"),
+        "expenses": extraction.get("expenses"),
+        "unclassified_documents": extraction.get("unclassified_documents", []),
+        "needs_review": bool(extraction.get("needs_review")),
+        "review_reason": extraction.get("review_reason"),
+    }
+
+
+def _user_texts_joined(history: list[dict]) -> str:
+    return " ".join(m.get("content", "") for m in history if m.get("role") == "user")
+
+
+def _bankid_chosen(history: list[dict]) -> bool:
+    return any(
+        BANKID_KEYWORD in (m.get("content", "") or "").lower()
+        for m in history if m.get("role") == "user"
+    )
 
 
 # Before the Loan Offer flow asks for identity/documents at all, the process
@@ -128,8 +264,7 @@ LOAN_OFFER_INTRO_MARKER = "Would you like to proceed with your Loan Offer applic
 LOAN_OFFER_INTRO_MARKER_SV = "Vill du gå vidare med din ansökan om låneerbjudande?"
 LOAN_OFFER_INTRO_TEXT = {
     "en": (
-        "I'm the mortgage specialist Sara connected you with. Before we start, here's "
-        "what a Loan Offer application involves:\n\n"
+        "Before we start, here's what a Loan Offer application involves:\n\n"
         "**What a Loan Offer is:** once you've won a bidding or signed a purchase "
         "agreement for a specific property, a Loan Offer is the bank's firm, binding "
         "mortgage terms for that property - the loan amount, interest rate, and monthly "
@@ -150,8 +285,7 @@ LOAN_OFFER_INTRO_TEXT = {
         f"{LOAN_OFFER_INTRO_MARKER}"
     ),
     "sv": (
-        "Jag är bolånespecialisten som Sara kopplade dig till. Innan vi börjar, här är "
-        "vad en ansökan om låneerbjudande innebär:\n\n"
+        "Innan vi börjar, här är vad en ansökan om låneerbjudande innebär:\n\n"
         "**Vad ett låneerbjudande är:** när du har vunnit en budgivning eller skrivit på "
         "ett köpekontrakt för en specifik bostad, är låneerbjudandet bankens fasta, "
         "bindande lånevillkor för just den bostaden - lånebelopp, ränta och "
@@ -201,14 +335,57 @@ def _loan_offer_intro_shown(history: list[dict]) -> bool:
     )
 
 
+# Second confirmation gate, after all 3 documents are attached and before
+# extraction/credit assessment actually runs: uploading a document isn't
+# the same as saying "go ahead and process this" - the customer should get
+# one explicit chance to confirm before the pipeline (identity re-check,
+# document extraction, credit assessment, and a possible Advisor/Operations
+# case) actually fires. Deterministic text, same reasoning as the intro gate.
+LOAN_OFFER_DOCS_CONFIRM_MARKER = "Would you like me to go ahead and process your Loan Offer application now?"
+LOAN_OFFER_DOCS_CONFIRM_MARKER_SV = "Vill du att jag går vidare och behandlar din ansökan om låneerbjudande nu?"
+LOAN_OFFER_DOCS_CONFIRM_TEXT = {
+    "en": (
+        "Thanks - I've received all three documents (Purchase Agreement, Income "
+        "Statement, and Expense details). Processing your application means "
+        "re-verifying your identity, extracting and checking the documents, and "
+        "running a credit assessment against LF Bergslagen's lending guidelines.\n\n"
+        f"{LOAN_OFFER_DOCS_CONFIRM_MARKER}"
+    ),
+    "sv": (
+        "Tack - jag har tagit emot alla tre dokument (köpekontrakt, "
+        "inkomstuppgift och utgiftsuppgifter). Att behandla din ansökan innebär "
+        "att vi verifierar din identitet igen, granskar dokumenten och gör en "
+        "kreditbedömning enligt LF Bergslagens låneriktlinjer.\n\n"
+        f"{LOAN_OFFER_DOCS_CONFIRM_MARKER_SV}"
+    ),
+}
+LOAN_OFFER_DOCS_CONFIRM_SUGGESTIONS = {
+    "en": ["Yes, go ahead", "Not yet"],
+    "sv": ["Ja, gå vidare", "Inte än"],
+}
+
+
+def _loan_offer_docs_confirm_shown(history: list[dict]) -> bool:
+    return any(
+        m.get("role") == "assistant"
+        and (LOAN_OFFER_DOCS_CONFIRM_MARKER in (m.get("content") or "") or LOAN_OFFER_DOCS_CONFIRM_MARKER_SV in (m.get("content") or ""))
+        for m in history
+    )
+
+
 def wants_loan_promise_application(history: list[dict]) -> bool:
-    combined = " ".join(m.get("content", "") for m in history if m.get("role") == "user").lower()
-    return any(kw in combined for kw in LOAN_PROMISE_KEYWORDS)
+    # "loan promise"/"lånelöfte" on its own is treated as intent - a
+    # suggestion chip or a customer's own wording varies ("Apply for
+    # mortgage loan promise", "I'd like the loan promise please", ...) far
+    # more than a fixed phrase list can enumerate, but the product name
+    # itself is specific enough (never used to mean anything else in this
+    # app) to trigger on alone - EXCEPT when it's just a clarifying
+    # question ("What is Lånelöfte?"), see _mentions_application_intent.
+    return _mentions_application_intent(history, ["loan promise", "lånelöfte"], LOAN_PROMISE_KEYWORDS)
 
 
 def wants_loan_offer_application(history: list[dict]) -> bool:
-    combined = " ".join(m.get("content", "") for m in history if m.get("role") == "user").lower()
-    return any(kw in combined for kw in LOAN_OFFER_KEYWORDS)
+    return _mentions_application_intent(history, ["loan offer", "låneerbjudande"], LOAN_OFFER_KEYWORDS)
 
 
 INDICATION_KEYWORDS = [
@@ -246,20 +423,59 @@ def _extract_attached_documents(history: list[dict]) -> list[dict]:
     for m in history:
         if m.get("role") != "user":
             continue
-        match = ATTACHMENT_RE.match((m.get("content") or "").strip())
-        if match:
+        for match in ATTACHMENT_RE.finditer(m.get("content") or ""):
             documents.append({"filename": match.group(1).strip(), "text": match.group(2).strip()})
     return documents
 
 
+def _document_form_submitted(history: list[dict]) -> bool:
+    """The frontend sends the reviewed form as a labeled user message."""
+    last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
+    return "Monthly gross income" in last_user and "Total monthly expenses" in last_user
+
+
+IDENTITY_HINT_RE = re.compile(r"\d{6,8}[-\s]?\d{4}")
+
+
+def _has_identity_hint(history: list[dict]) -> bool:
+    user_text = " ".join(m.get("content", "") for m in history if m.get("role") == "user")
+    return bool(IDENTITY_HINT_RE.search(user_text) or _bankid_chosen(history))
+
+
+def compute_transition_progress(history: list[dict]) -> dict | None:
+    """Progress through whichever mortgage flow (Loan Promise or Loan Offer)
+    the customer has started, derived from the same conversation-transcript
+    signals the flows themselves already use (identity hint, attached
+    document count, resolved markers) - no separate session state needed.
+    Powers the Task Completion Ring in the chat widget. None until a flow
+    has actually been started."""
+    if wants_loan_offer_application(history):
+        flow_label, documents_needed, resolved = "Loan Offer", 3, loan_offer_flow_resolved(history)
+    elif wants_loan_promise_application(history):
+        flow_label, documents_needed, resolved = "Loan Promise", 2, loan_promise_flow_resolved(history)
+    else:
+        return None
+
+    steps = [
+        {"label": "Application started", "done": True},
+        {"label": "Identity verified", "done": _has_identity_hint(history)},
+        {"label": "Documents uploaded", "done": len(_extract_attached_documents(history)) >= documents_needed},
+        {"label": "Request Submitted", "done": resolved},
+    ]
+    completed = sum(1 for step in steps if step["done"])
+    return {"flow": flow_label, "steps": steps, "percent": round(completed / len(steps) * 100)}
+
+
 LOAN_PROMISE_SYSTEM_PROMPT = """You are the Mortgage Agent, a specialist that
-Sara (LF Bergslagen's main digital assistant) hands a conversation off to once
+Sara (LF Bergslagen's main digital companion) hands a conversation off to once
 a customer wants to apply for a Loan Promise (Lånelöfte) - an income-based
 statement of how much they could likely borrow, used BEFORE they've found a
-specific property, so they're ready to bid once they find one. Introduce
-yourself briefly in your first reply (e.g. "I'm the mortgage specialist Sara
-connected you with") and then run the application process. Reply in the same
-language the customer is writing in, matching Sara's own language rule.
+specific property, so they're ready to bid once they find one. The customer
+only ever sees this as Sara speaking (never a distinct persona introduced or
+handed off to), so continue the conversation in Sara's own voice - no
+self-introduction, no "I'm the specialist X connected you with" framing -
+and just run the application process. Reply in the same language the
+customer is writing in, matching Sara's own language rule.
 
 THE PROCESS, IN ORDER - do not skip or reorder steps:
 
@@ -293,62 +509,22 @@ general knowledge, even if it looks plausible.
    documents above, and ask for whichever are still missing. Never invent
    or guess at a different URL - only the fetched page's own URL.
 
-3. As soon as identity info AND at least 2 attached documents are present,
-   proceed immediately - do NOT ask any more clarifying questions first.
-   Run the rest of the pipeline via tool calls, in order, within this same
-   reply:
-   a. verify_customer_identity - never assume verified from an earlier turn,
-      tool results aren't kept between turns, always call it fresh here.
-   b. extract_mortgage_documents - reads every document attached anywhere in
-      this conversation (no arguments needed). If its result has
-      needs_review = true, STOP: call create_review_case explaining the
-      review_reason, then tell the customer plainly:
-        - a short, plain-language summary of what was actually found (e.g.
-          unstable employment type, or an unclear/inconsistent document)
-        - that because of this, their application needs a Customer Advisor
-          to look at it manually
-        - the case ID
-      End your reply with the exact phrase "loan promise application has
-      been sent to a Customer Advisor" somewhere in the sentence. Do not
-      continue to the affordability assessment.
-   c. If documents are fine, call assess_loan_promise using the extracted
-      monthly_gross_income_sek and monthly_expenses_total_sek.
-      - If the decision is DECLINE: STOP. Call create_review_case with the
-        reasons given, tell the customer plainly (don't hide it behind vague
-        language), state the case ID, and end your reply with the exact
-        phrase "unable to proceed with this loan promise application"
-        somewhere in the sentence.
-      - If APPROVE: continue.
-   d. fetch_interest_rate for this customer.
-   e. calculate_loan_terms using the max_loan_amount_sek assess_loan_promise
-      just returned and the final_interest_rate_percent fetch_interest_rate
-      just returned.
-   f. Write out a clearly formatted Loan Promise (Lånelöfte) directly in your
-      reply - a heading containing the exact phrase "Loan Promise
-      (Lånelöfte)", then: applicant name, maximum loan amount, the implied
-      property price ceiling this suggests (assess_loan_promise's
-      implied_property_price_sek - frame it as "based on this, you could look
-      at homes priced up to about X SEK, assuming a 15% down payment"),
-      interest rate (show the market base rate + tier spread + final rate
-      breakdown), amortization term in years, the monthly payment at the
-      maximum loan amount, and a line stating "This loan promise is valid
-      for 3 months from today." Use ONLY numbers that came from tool
-      results - never estimate or round on your own. Close by telling the
-      customer plainly: once they've found a home and signed a purchase
-      agreement (köpekontrakt), they can come back and ask to apply for a
-      Loan Offer to finalize the actual mortgage for that specific property.
+3. Once both documents are attached, you are no longer involved - the
+   backend takes over deterministically from here (extraction, the
+   review-and-submit form, and the specialist hand-off with a real case ID
+   all happen in Python, not in this conversation with you). You will not
+   be called again for this application until there's something outside
+   that - e.g. a follow-up question - to handle.
 
 RULES THROUGHOUT:
-- Never invent a case ID, customer_id, interest rate, or any calculated
-  figure - only ever state values a tool result actually returned.
-- Every decision point above is logged to an audit trail automatically by
-  the tools themselves - you don't need to do anything extra for that.
+- Never invent a case ID, customer_id, or any figure - only ever state
+  values a tool result actually returned.
 - If the user asks something unrelated to this application, answer briefly
   and steer back to whichever step is still open.
 """
 
 LOAN_OFFER_SYSTEM_PROMPT = """You are the Mortgage Agent, a specialist that
-Sara (LF Bergslagen's main digital assistant) hands a conversation off to once
+Sara (LF Bergslagen's main digital companion) hands a conversation off to once
 a customer wants to apply for a Loan Offer - a firm mortgage offer tied to a
 specific property they've already agreed to buy (won the bidding / signed a
 purchase agreement). The customer has ALREADY seen an introduction covering
@@ -401,26 +577,43 @@ general knowledge, even if it looks plausible.
    proceed immediately - do NOT ask about purchase price or loan amount
    again first, those are resolved inside the pipeline below (extraction
    gives the price; no stated amount means the 85% default is used
-   automatically). This triggers the Credit Assessment process - run it via
-   tool calls, in order, within this same reply:
-   a. verify_customer_identity - never assume verified from an earlier turn,
-      tool results aren't kept between turns, always call it fresh here.
+   automatically). This step always has TWO PHASES, never skip straight to
+   phase B - a system message each turn tells you which phase applies now:
+
+   PHASE A - EXTRACT AND STOP (do this whenever the reminder says this is
+   the document-review step, even if documents were already attached on an
+   earlier turn - tool results aren't kept between turns, so re-run these
+   fresh here):
+   a. verify_customer_identity.
    b. extract_mortgage_documents (the Document Extraction & Verification
       step) - reads every document attached anywhere in this conversation
       (no arguments needed).
-      CHECK FOR SPECIAL CONDITIONS: if the result's
+   Then STOP - do not run credit assessment, fetch a rate, calculate terms,
+   create a review case, or write out a Loan Offer result or any figures.
+   Just tell the customer, in one or two sentences, that you've read their
+   documents and the extracted details are ready for them to review below.
+
+   PHASE B - DECIDE (only do this whenever the reminder says the customer
+   has reviewed and submitted the extracted form):
+   c. verify_customer_identity fresh here. Do NOT call
+      extract_mortgage_documents again in this phase - the reminder gives
+      you the extraction result (and the customer's reviewed income/expense
+      figures) already; use those directly, not a fresh re-extraction that
+      would silently discard any correction the customer made.
+      CHECK FOR SPECIAL CONDITIONS: if the extraction's
       purchase_agreement.special_conditions is non-empty, OR needs_review is
-      true for any other reason, STOP here - do not run credit assessment.
-      You MUST actually call the create_review_case tool now, in this same
-      turn, before writing any reply text about it - never compose a
-      "sent to a Customer Advisor" sentence without having made that real
-      tool call first and read back its case ID. Call create_review_case
-      with a `reason` that is a genuinely useful,
-      plain-language summary (not just "special conditions exist" - say what
-      they actually are, e.g. "the seller hasn't shown full title for part
-      of the lot, and the sale is contingent on a boundary dispute being
-      resolved"; if it's something else, like unstable employment type,
-      explain that instead). Then tell the customer plainly, in your reply:
+      true for any other reason (the reminder will tell you if so), STOP
+      here - do not run credit assessment. You MUST actually call the
+      create_review_case tool now, in this same turn, before writing any
+      reply text about it - never compose a "sent to a Customer Advisor"
+      sentence without having made that real tool call first and read back
+      its case ID. Call create_review_case with a `reason` that is a
+      genuinely useful, plain-language summary (not just "special
+      conditions exist" - say what they actually are, e.g. "the seller
+      hasn't shown full title for part of the lot, and the sale is
+      contingent on a boundary dispute being resolved"; if it's something
+      else, like unstable employment type, explain that instead). Then tell
+      the customer plainly, in your reply:
         - that same plain-language summary of what was found
         - that their application has been passed to a Customer Advisor for
           further review, and the bank will get back to her
@@ -429,7 +622,7 @@ general knowledge, even if it looks plausible.
       sent to a Customer Advisor" somewhere in the sentence.
       If there are no special conditions and needs_review is false, proceed
       to the next step.
-   c. run_credit_assessment (the Credit Assessment Agent) using the
+   d. run_credit_assessment (the Credit Assessment Agent) using the
       extracted monthly_gross_income_sek, the extracted
       monthly_expenses_total_sek, the loan amount (customer-stated or 85% of
       purchase_price_sek), and property_value_sek = purchase_price_sek. This
@@ -470,22 +663,25 @@ general knowledge, even if it looks plausible.
         with the exact phrase "unable to proceed with this loan offer
         application" somewhere in the sentence.
       - If APPROVE: continue.
-   d. fetch_interest_rate for this customer.
-   e. calculate_loan_terms using the loan amount and the final_interest_rate_percent
+   e. fetch_interest_rate for this customer.
+   f. calculate_loan_terms using the loan amount and the final_interest_rate_percent
       fetch_interest_rate just returned.
-   f. Write out a clearly formatted Loan Offer directly in your reply - a
-      heading containing the exact phrase "Loan Offer for" followed by the
-      property address, then: applicant name, property address (from the
-      extracted purchase agreement), purchase price, loan amount, interest
-      rate (show the market base rate + tier spread + final rate
-      breakdown), amortization term in years, monthly payment, and a line
-      stating "This loan offer is valid for 30 days from today." Use ONLY
-      numbers that came from tool results - never estimate or round on your
-      own. Still never mention credit score, DTI, LTV, or the internal
-      recommendation here.
+   f. Do NOT write out a detailed rate/payment letter to the customer - the
+      exact interest rate, monthly payment, and amortization figures you
+      just calculated are for the Operations case (trigger_operations_case
+      below already receives them), not for reciting in chat. Instead, in
+      your reply tell the customer plainly, in this shape: that based on
+      the information provided, she is eligible for the loan as per LF
+      Bergslagen's guidelines, and that further processing is now needed to
+      finalize things. You may name the property address and confirm the
+      loan amount for her own reference, but never state the interest rate,
+      monthly payment, credit score, DTI, LTV, or the internal
+      recommendation. Include the exact phrase "eligible for the loan"
+      somewhere in the sentence.
    g. trigger_operations_case to hand off for e-signature, account opening,
-      and settlement/disbursement. State the case ID it returns and mention
-      these operational steps are being progressively automated too.
+      and settlement/disbursement. State the case ID it returns as part of
+      the same reply as step f (not a separate message), and mention these
+      operational steps are being progressively automated too.
 
 RULES THROUGHOUT:
 - Never invent a case ID, customer_id, interest rate, or any calculated
@@ -508,6 +704,11 @@ RULES THROUGHOUT:
   the tools themselves - you don't need to do anything extra for that.
 - If the user asks something unrelated to this application, answer briefly
   and steer back to whichever step is still open.
+- Whenever this reply reaches a terminal outcome (a case created via
+  create_review_case, a completed trigger_operations_case hand-off, or a
+  decline), end with a closing question like "Is there anything else I can
+  help you with today?" - not just the case ID and a description of what
+  happens next.
 """
 
 FETCH_LF_PAGE_TOOL = {
@@ -604,87 +805,68 @@ CREATE_REVIEW_CASE_TOOL = {
     },
 }
 
+RUN_CREDIT_ASSESSMENT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "run_credit_assessment",
+        "description": "Run the retail mortgage credit decision policy for a verified customer.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "customer_id": {"type": "string"},
+                "monthly_gross_income_sek": {"type": "number"},
+                "monthly_expenses_sek": {"type": "number"},
+                "loan_amount_sek": {"type": "number"},
+                "property_value_sek": {"type": "number"},
+            },
+            "required": [
+                "customer_id", "monthly_gross_income_sek", "monthly_expenses_sek",
+                "loan_amount_sek", "property_value_sek",
+            ],
+        },
+    },
+}
+TRIGGER_OPERATIONS_CASE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "trigger_operations_case",
+        "description": "Hand off an approved mortgage to Operations for e-signature, account opening, and disbursement.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "customer_id": {"type": "string"},
+                "customer_name": {"type": "string"},
+                "loan_amount_sek": {"type": "number"},
+                "interest_rate_percent": {"type": "number"},
+                "monthly_payment_sek": {"type": "number"},
+                "property_address": {"type": "string"},
+            },
+            "required": [
+                "customer_id", "customer_name", "loan_amount_sek",
+                "interest_rate_percent", "monthly_payment_sek",
+            ],
+        },
+    },
+}
+
+# Document review (before the customer has submitted the reviewed form)
+# only ever offers these three tools to the model - create_review_case is
+# structurally unavailable here, not just discouraged by prompt text, so a
+# fabricated decision can't be backed by a real tool call. See
+# PHASE_A_READY_TEXT's comment for why this alone wasn't quite enough and
+# what backs it up.
+LOAN_OFFER_PHASE_A_TOOLS = [FETCH_LF_PAGE_TOOL, VERIFY_IDENTITY_TOOL, EXTRACT_DOCUMENTS_TOOL]
+
 LOAN_OFFER_TOOLS = [
     FETCH_LF_PAGE_TOOL,
     VERIFY_IDENTITY_TOOL,
     EXTRACT_DOCUMENTS_TOOL,
-    {
-        "type": "function",
-        "function": {
-            "name": "run_credit_assessment",
-            "description": "Run the retail mortgage credit decision policy for a verified customer.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "customer_id": {"type": "string"},
-                    "monthly_gross_income_sek": {"type": "number"},
-                    "monthly_expenses_sek": {"type": "number"},
-                    "loan_amount_sek": {"type": "number"},
-                    "property_value_sek": {"type": "number"},
-                },
-                "required": [
-                    "customer_id", "monthly_gross_income_sek", "monthly_expenses_sek",
-                    "loan_amount_sek", "property_value_sek",
-                ],
-            },
-        },
-    },
+    RUN_CREDIT_ASSESSMENT_TOOL,
     FETCH_INTEREST_RATE_TOOL,
     CALCULATE_LOAN_TERMS_TOOL,
     CREATE_REVIEW_CASE_TOOL,
-    {
-        "type": "function",
-        "function": {
-            "name": "trigger_operations_case",
-            "description": "Hand off an approved mortgage to Operations for e-signature, account opening, and disbursement.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "customer_id": {"type": "string"},
-                    "customer_name": {"type": "string"},
-                    "loan_amount_sek": {"type": "number"},
-                    "interest_rate_percent": {"type": "number"},
-                    "monthly_payment_sek": {"type": "number"},
-                    "property_address": {"type": "string"},
-                },
-                "required": [
-                    "customer_id", "customer_name", "loan_amount_sek",
-                    "interest_rate_percent", "monthly_payment_sek",
-                ],
-            },
-        },
-    },
+    TRIGGER_OPERATIONS_CASE_TOOL,
 ]
-
-LOAN_PROMISE_TOOLS = [
-    FETCH_LF_PAGE_TOOL,
-    VERIFY_IDENTITY_TOOL,
-    EXTRACT_DOCUMENTS_TOOL,
-    {
-        "type": "function",
-        "function": {
-            "name": "assess_loan_promise",
-            "description": (
-                "Run the Loan Promise affordability policy for a verified customer - "
-                "returns the maximum loan amount they could likely borrow, before any "
-                "specific property is known."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "customer_id": {"type": "string"},
-                    "monthly_gross_income_sek": {"type": "number"},
-                    "monthly_expenses_sek": {"type": "number"},
-                },
-                "required": ["customer_id", "monthly_gross_income_sek", "monthly_expenses_sek"],
-            },
-        },
-    },
-    FETCH_INTEREST_RATE_TOOL,
-    CALCULATE_LOAN_TERMS_TOOL,
-    CREATE_REVIEW_CASE_TOOL,
-]
-
 
 def _find_customer(customer_id: str) -> dict | None:
     return next((c for c in MOCK_CUSTOMERS if c["customer_id"] == customer_id), None)
@@ -749,7 +931,7 @@ def _build_document_form(extraction: dict | None) -> dict | None:
         return None
     return {
         "type": "document_application",
-        "title": "Application details from uploaded documents",
+        "title": "Review application details from uploaded documents",
         "fields": fields,
     }
 
@@ -881,51 +1063,130 @@ def _fallback_reply(lang: str | None) -> tuple[str, list[str], dict]:
 
 
 def run_loan_promise_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[str], dict]:
-    has_identity_hint = bool(re.search(r"\d{6,8}[-\s]?\d{4}", " ".join(
-        m.get("content", "") for m in history if m.get("role") == "user"
-    )))
+    key = "sv" if lang == "sv" else "en"
+    bankid_customer = verify_customer_by_personnummer(BANKID_DEMO_PERSONNUMMER) if _bankid_chosen(history) else None
 
-    if not has_identity_hint:
-        key = "sv" if lang == "sv" else "en"
-        return ASK_IDENTITY_TEXT["loan_promise"][key], [], {"form": IDENTITY_FORM}
-
-    messages = [{"role": "system", "content": LOAN_PROMISE_SYSTEM_PROMPT}]
-    messages.extend(history)
+    if not bankid_customer:
+        return (
+            AUTH_CHOICE_TEXT["loan_promise"][key],
+            AUTH_CHOICE_SUGGESTIONS[key],
+            {"form": AUTH_CHOICE_FORM},
+        )
 
     documents_attached = len(_extract_attached_documents(history))
+    form_submitted = _document_form_submitted(history)
 
-    if documents_attached >= 2:
-        messages.append({
-            "role": "system",
-            "content": (
-                "All prerequisites are present (identity details and 2 attached documents). "
-                "In THIS reply, run the full pipeline via tool calls as described in step 3 of "
-                "your instructions, ending with either a Loan Promise, a review hand-off, or a "
-                "decline. Do not just ask another clarifying question."
-            ),
-        })
-    else:
-        reminder = (
-            f"Still missing: attached documents ({documents_attached}/2 so far). Ask for "
-            "whichever are still missing (income statement, expenses summary) - do not call "
-            "extract_mortgage_documents, assess_loan_promise, or any later tool yet."
-        )
-        if _wants_loan_indication(history):
-            reminder += (
-                " The customer is asking for a loan indication/estimate - in THIS reply, "
-                "call fetch_lf_page(\"home_loan\") and share the real calculator link from its "
-                "results, AND explain that an actual Loan Promise here in chat needs the "
-                "documents above."
-            )
-        messages.append({"role": "system", "content": reminder})
-
+    # Extraction is computed once, deterministically, here in Python - not
+    # left to an LLM's own choice of whether/when to extract - so the review
+    # form and document_review summary can never disagree with each other.
     last_extraction: dict | None = None
-    last_loan_promise_assessment: dict | None = None
+    if documents_attached >= 2:
+        last_extraction = document_agent.extract_and_verify(_extract_attached_documents(history))
+
+    # Once documents are in, identity (BankID-only, already resolved above)
+    # and extraction are both fully deterministic, so phases A and B below
+    # need no LLM call at all. This is deliberate, not just an optimization:
+    # testing showed that even with assess/rate/terms tools made
+    # unavailable, a tool-calling loop given LOAN_PROMISE_SYSTEM_PROMPT's
+    # detailed description of the expected final format would still
+    # sometimes fabricate a complete, plausible-looking Loan Promise result
+    # (a specific loan amount, rate, monthly payment) as plain text, with no
+    # tool call or real number behind any of it - since tool_choice is
+    # "auto", nothing stops a model from just not calling any tool at all.
+    # Removing the LLM from this step entirely is what actually closes that
+    # gap, rather than narrowing it.
+    if documents_attached >= 2:
+        if not form_submitted:
+            extra: dict = {"form": _build_document_form(last_extraction)}
+            if last_extraction:
+                extra["document_review"] = _document_review_summary(last_extraction)
+            return PHASE_A_READY_TEXT[key], [], extra
+
+        # PHASE B - hand off to a specialist. A Loan Promise is never an
+        # instant automated decision the customer sees in this chat -
+        # every reviewed application becomes a real case.
+        income = (last_extraction or {}).get("income_statement") or {}
+        expenses = (last_extraction or {}).get("expenses") or {}
+        needs_review = bool((last_extraction or {}).get("needs_review"))
+        review_reason = (last_extraction or {}).get("review_reason")
+
+        reason_bits = [
+            f"Employer: {income.get('employer', 'unknown')}",
+            f"Monthly income: {income.get('monthly_gross_income_sek', 'unknown')} SEK",
+            f"Monthly expenses: {expenses.get('monthly_expenses_total_sek', 'unknown')} SEK",
+        ]
+        if needs_review and review_reason:
+            reason_bits.append(f"Flagged during document extraction: {review_reason}")
+        reason = "Loan Promise application reviewed and submitted by customer. " + "; ".join(reason_bits)
+
+        case_extra: dict[str, str] = {
+            "applicationType": "loan_promise",
+            "monthlyGrossIncomeSek": _stringify_extra(income.get("monthly_gross_income_sek")),
+            "employmentType": _stringify_extra(income.get("employment_type")),
+            "monthlyExpensesSek": _stringify_extra(expenses.get("monthly_expenses_total_sek")),
+        }
+        # Computed here for the specialist's case file only - never shown
+        # to the customer in this chat.
+        income_val = income.get("monthly_gross_income_sek")
+        expenses_val = expenses.get("monthly_expenses_total_sek")
+        if income_val is not None and expenses_val is not None:
+            assessment = credit_agent.assess_loan_promise_eligibility(
+                bankid_customer["customer_id"], float(income_val), float(expenses_val)
+            )
+            case_extra.update({
+                "preliminaryDecision": _stringify_extra(assessment.get("decision")),
+                "preliminaryDecisionReasons": _stringify_extra(assessment.get("reasons")),
+            })
+        case_extra["reason"] = reason
+        case_extra["auditCustomerId"] = bankid_customer["customer_id"]
+
+        case_id, status = cs_client.create_case_with_fallback(
+            "mortgage_review", bankid_customer["name"], bankid_customer["customer_id"], reason, case_extra,
+        )
+        audit.record_event(
+            agent="mortgage_agent", action="route_to_customer_advisor",
+            customer_id=bankid_customer["customer_id"], decision="MANUAL_REVIEW",
+            details={"application_type": "loan_promise", "case_id": case_id, "reason": reason, "extra": case_extra},
+        )
+
+        reply = PHASE_B_CASE_CREATED_TEXT[key].format(case_id=case_id)
+        return reply, [], {}
+
+    # Fewer than 2 documents - the only part of this flow still handled by
+    # the LLM: a natural-language nudge for whichever documents are
+    # missing, plus sharing the mortgage calculator link if the customer
+    # asks for a rough estimate before documents are ready. No figures at
+    # risk here - only fetch_lf_page is offered.
+    messages = [{"role": "system", "content": LOAN_PROMISE_SYSTEM_PROMPT}]
+    messages.append({
+        "role": "system",
+        "content": (
+            "The customer authenticated via BankID using only their personnummer - a real "
+            "BankID login already confirms the name and date of birth behind it, so do not ask "
+            "for those separately. Their details: "
+            f"full_name={bankid_customer['name']}, personnummer={bankid_customer['personnummer']}, "
+            f"dob={bankid_customer['dob']}. Treat step 1 (IDENTITY) as complete with these values."
+        ),
+    })
+    messages.extend(history)
+
+    reminder = (
+        f"Still missing: attached documents ({documents_attached}/2 so far). Ask for "
+        "whichever are still missing (income statement, expenses summary) - do not call "
+        "extract_mortgage_documents or any later tool yet."
+    )
+    if _wants_loan_indication(history):
+        reminder += (
+            " The customer is asking for a loan indication/estimate - in THIS reply, "
+            "call fetch_lf_page(\"home_loan\") and share the real calculator link from its "
+            "results, AND explain that an actual Loan Promise here in chat needs the "
+            "documents above."
+        )
+    messages.append({"role": "system", "content": reminder})
+
     seen_urls: set[str] = set()
 
     def dispatch(name: str, args: dict) -> str:
-        nonlocal last_extraction, last_loan_promise_assessment
-
         if name == "fetch_lf_page":
             topic = args.get("topic", "")
             result = fetch_lf_page(topic)
@@ -934,86 +1195,16 @@ def run_loan_promise_agent(history: list[dict], lang: str | None = None) -> tupl
                 seen_urls.add(LF_PAGES[topic])
                 result += f"\n\n(This page's own URL: {LF_PAGES[topic]})"
             return result
-
-        if name == "verify_customer_identity":
-            return verify_customer_identity(
-                args.get("name", ""), args.get("personnummer", ""), args.get("dob", "")
-            )
-
-        if name == "extract_mortgage_documents":
-            docs = _extract_attached_documents(history)
-            last_extraction = document_agent.extract_and_verify(docs)
-            return json.dumps(last_extraction, ensure_ascii=False)
-
-        if name == "assess_loan_promise":
-            last_loan_promise_assessment = credit_agent.assess_loan_promise_eligibility(
-                args.get("customer_id", ""),
-                float(args.get("monthly_gross_income_sek", 0) or 0),
-                float(args.get("monthly_expenses_sek", 0) or 0),
-            )
-            return json.dumps(last_loan_promise_assessment, ensure_ascii=False)
-
-        if name == "fetch_interest_rate":
-            customer_id = args.get("customer_id", "")
-            customer = _find_customer(customer_id)
-            tier = customer["tier"] if customer else "Standard"
-            return json.dumps(loan_calc.get_interest_rate(customer_id, tier), ensure_ascii=False)
-
-        if name == "calculate_loan_terms":
-            return json.dumps(
-                loan_calc.calculate_loan_terms(
-                    args.get("customer_id", ""),
-                    float(args.get("loan_amount_sek", 0) or 0),
-                    float(args.get("annual_rate_percent", 0) or 0),
-                ),
-                ensure_ascii=False,
-            )
-
-        if name == "create_review_case":
-            customer_id = args.get("customer_id") or ""
-            extra: dict[str, str] = {"applicationType": "loan_promise"}
-            if last_extraction:
-                income_statement = last_extraction.get("income_statement") or {}
-                expenses = last_extraction.get("expenses") or {}
-                extra.update({
-                    "monthlyGrossIncomeSek": _stringify_extra(income_statement.get("monthly_gross_income_sek")),
-                    "employmentType": _stringify_extra(income_statement.get("employment_type")),
-                    "monthlyExpensesSek": _stringify_extra(expenses.get("monthly_expenses_total_sek")),
-                })
-            if last_loan_promise_assessment:
-                extra.update({
-                    "decision": _stringify_extra(last_loan_promise_assessment.get("decision")),
-                    "decisionReasons": _stringify_extra(last_loan_promise_assessment.get("reasons")),
-                })
-            extra["reason"] = args.get("reason", "")
-            if customer_id:
-                extra["auditCustomerId"] = customer_id
-
-            case_id, status = cs_client.create_case_with_fallback(
-                "mortgage_review",
-                args.get("customer_name", ""),
-                customer_id or None,
-                args.get("reason", "Loan promise application flagged for manual review."),
-                extra,
-            )
-            audit.record_event(
-                agent="mortgage_agent", action="route_to_customer_advisor",
-                customer_id=customer_id or None, decision="MANUAL_REVIEW",
-                details={"application_type": "loan_promise", "case_id": case_id, "reason": args.get("reason", ""), "extra": extra},
-            )
-            return f"Case created.\nCase ID: {case_id}\nStatus: {status}"
-
         return f"Unknown tool '{name}'."
 
-    reply = _run_tool_loop(messages, LOAN_PROMISE_TOOLS, dispatch, seen_urls)
+    reply = _run_tool_loop(messages, [FETCH_LF_PAGE_TOOL], dispatch, seen_urls)
     if reply is None:
         return _fallback_reply(lang)
 
     last_user_message = next(
         (m.get("content", "") for m in reversed(history) if m.get("role") == "user"), ""
     )
-    extra = {"form": _build_document_form(last_extraction)} if last_extraction else {}
-    return reply, generate_suggestions(last_user_message, reply), extra
+    return reply, generate_suggestions(last_user_message, reply), {}
 
 
 def run_loan_offer_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[str], dict]:
@@ -1027,40 +1218,100 @@ def run_loan_offer_agent(history: list[dict], lang: str | None = None) -> tuple[
     if not _loan_offer_intro_shown(history):
         return LOAN_OFFER_INTRO_TEXT[key], LOAN_OFFER_INTRO_SUGGESTIONS[key], {}
 
-    if not _wants_to_proceed(history):
-        not_now_text = {
-            "en": "No problem - just let me know whenever you're ready to apply for your Loan Offer.",
-            "sv": "Inga problem - säg bara till när du är redo att ansöka om ditt låneerbjudande.",
-        }
-        return not_now_text[key], [], {}
-
     has_identity_hint = bool(re.search(r"\d{6,8}[-\s]?\d{4}", " ".join(
         m.get("content", "") for m in history if m.get("role") == "user"
     )))
 
     if not has_identity_hint:
+        # This "decline" check only makes sense right after the intro -
+        # scoped to here (not evaluated on every later turn) so an
+        # unrelated "not yet" much later in the conversation (e.g. while
+        # deciding whether to process the uploaded documents) can't be
+        # misread as declining the intro itself.
+        if not _wants_to_proceed(history):
+            not_now_text = {
+                "en": "No problem - just let me know whenever you're ready to apply for your Loan Offer.",
+                "sv": "Inga problem - säg bara till när du är redo att ansöka om ditt låneerbjudande.",
+            }
+            return not_now_text[key], [], {}
         return ASK_IDENTITY_TEXT["loan_offer"][key], [], {"form": IDENTITY_FORM}
+
+    documents_attached = len(_extract_attached_documents(history))
+
+    # Second confirmation gate: having all 3 documents attached isn't the
+    # same as the customer saying "go ahead and process this now" - ask
+    # once, deterministically, before the pipeline (re-verification,
+    # extraction, credit assessment, and a possible case) actually runs.
+    if documents_attached >= 3:
+        if not _loan_offer_docs_confirm_shown(history):
+            return LOAN_OFFER_DOCS_CONFIRM_TEXT[key], LOAN_OFFER_DOCS_CONFIRM_SUGGESTIONS[key], {}
+        if not _wants_to_proceed(history):
+            not_now_processing_text = {
+                "en": "No problem - your documents are saved here. Just let me know when you'd like me to go ahead.",
+                "sv": "Inga problem - dina dokument finns kvar här. Säg bara till när du vill att jag går vidare.",
+            }
+            return not_now_processing_text[key], [], {}
 
     messages = [{"role": "system", "content": LOAN_OFFER_SYSTEM_PROMPT}]
     messages.extend(history)
 
-    documents_attached = len(_extract_attached_documents(history))
+    form_submitted = _document_form_submitted(history)
+
+    # Computed once, deterministically, here - same reasoning as
+    # run_loan_promise_agent's identical comment above: the review form,
+    # document_review summary, and reminder text below must never disagree
+    # with each other or depend on whether the model bothers to call
+    # extract_mortgage_documents itself.
+    last_extraction: dict | None = None
+    if documents_attached >= 3:
+        last_extraction = document_agent.extract_and_verify(_extract_attached_documents(history))
+
+    # See LOAN_OFFER_PHASE_A_TOOLS's comment - phase B's decision tools are
+    # only ever offered to the model once the form is actually submitted.
+    phase_b = documents_attached >= 3 and form_submitted
+    active_tools = LOAN_OFFER_TOOLS if phase_b else LOAN_OFFER_PHASE_A_TOOLS
 
     if documents_attached >= 3:
-        messages.append({
-            "role": "system",
-            "content": (
-                "All prerequisites are present (identity details and 3 attached documents). "
-                "In THIS reply, run the full pipeline via tool calls as described in step 3 of "
-                "your instructions, ending with either a Loan Offer, a review hand-off, or a "
-                "decline. Do NOT ask the customer to confirm the purchase price or a loan "
-                "amount first - extract_mortgage_documents will give you the price, and if no "
-                "specific loan amount was stated anywhere in this conversation, use 85% of "
-                "that price automatically. Do not just ask another clarifying question. If "
-                "extraction comes back needs_review=true, your reply must summarize the actual "
-                "special_conditions in plain language, not just say 'special conditions exist'."
-            ),
-        })
+        special_conditions = ((last_extraction or {}).get("purchase_agreement") or {}).get("special_conditions")
+        needs_review = bool((last_extraction or {}).get("needs_review")) or bool(special_conditions)
+        if not form_submitted:
+            reminder = (
+                "PHASE A - document review step. Call verify_customer_identity and "
+                "extract_mortgage_documents, then STOP: do not run credit assessment, fetch a "
+                "rate, calculate terms, create a review case, or write out a Loan Offer result "
+                "or any figures. Just tell the customer you've read their documents and the "
+                "extracted details are ready for them to review below."
+            )
+        elif needs_review:
+            reason = (last_extraction or {}).get("review_reason") or (
+                f"special conditions in the purchase agreement: {special_conditions}"
+                if special_conditions else "(none given)"
+            )
+            reminder = (
+                f"PHASE B - needs manual review, reason: {reason!r}. Call verify_customer_identity, "
+                "then create_review_case explaining this reason, then tell the customer plainly "
+                "what was found, that it's been passed to a Customer Advisor, and the case ID - "
+                "end with the exact phrase 'loan offer application has been sent to a Customer "
+                "Advisor'. Do not call extract_mortgage_documents again, and do not continue to "
+                "the credit assessment."
+            )
+        else:
+            income = (last_extraction or {}).get("income_statement") or {}
+            expenses = (last_extraction or {}).get("expenses") or {}
+            purchase = (last_extraction or {}).get("purchase_agreement") or {}
+            reminder = (
+                "PHASE B - the customer has reviewed and submitted the extracted application "
+                "form. Run the rest of the pipeline now in this reply: call "
+                "verify_customer_identity, then run_credit_assessment using "
+                f"monthly_gross_income_sek={income.get('monthly_gross_income_sek')}, "
+                f"monthly_expenses_sek={expenses.get('monthly_expenses_total_sek')} (their "
+                f"reviewed values), purchase_price_sek={purchase.get('purchase_price_sek')}, and "
+                "the loan amount (customer-stated or 85% of that purchase price) - do not call "
+                "extract_mortgage_documents again. Then fetch_interest_rate, calculate_loan_terms, "
+                "and end with the final Loan Offer (or a review hand-off/decline per the policy "
+                "result)."
+            )
+        messages.append({"role": "system", "content": reminder})
     else:
         # Identity is already confirmed present (handled above, before the
         # LLM is even called) - only documents can still be missing here.
@@ -1078,12 +1329,11 @@ def run_loan_offer_agent(history: list[dict], lang: str | None = None) -> tuple[
             )
         messages.append({"role": "system", "content": reminder})
 
-    last_extraction: dict | None = None
     last_credit_assessment: dict | None = None
     seen_urls: set[str] = set()
 
     def dispatch(name: str, args: dict) -> str:
-        nonlocal last_extraction, last_credit_assessment
+        nonlocal last_credit_assessment
 
         if name == "fetch_lf_page":
             topic = args.get("topic", "")
@@ -1100,9 +1350,10 @@ def run_loan_offer_agent(history: list[dict], lang: str | None = None) -> tuple[
             )
 
         if name == "extract_mortgage_documents":
-            docs = _extract_attached_documents(history)
-            last_extraction = document_agent.extract_and_verify(docs)
-            return json.dumps(last_extraction, ensure_ascii=False)
+            # Already computed once, deterministically, above - see the
+            # comment by last_extraction's definition earlier in this
+            # function.
+            return json.dumps(last_extraction or {}, ensure_ascii=False)
 
         if name == "run_credit_assessment":
             last_credit_assessment = credit_agent.assess_credit(
@@ -1182,12 +1433,14 @@ def run_loan_offer_agent(history: list[dict], lang: str | None = None) -> tuple[
 
         return f"Unknown tool '{name}'."
 
-    reply = _run_tool_loop(messages, LOAN_OFFER_TOOLS, dispatch, seen_urls)
+    reply = _run_tool_loop(messages, active_tools, dispatch, seen_urls)
     if reply is None:
         return _fallback_reply(lang)
+    if not phase_b and any(marker in reply for marker in LOAN_OFFER_RESOLVED_MARKERS):
+        reply = PHASE_A_READY_TEXT[key]
 
     last_user_message = next(
         (m.get("content", "") for m in reversed(history) if m.get("role") == "user"), ""
     )
-    extra = {"form": _build_document_form(last_extraction)} if last_extraction else {}
+    extra = {"form": _build_document_form(last_extraction)} if last_extraction and not form_submitted else {}
     return reply, generate_suggestions(last_user_message, reply), extra

@@ -16,7 +16,7 @@ agent (see backend/audit.py)."""
 
 import re
 
-from .. import audit, cs_client
+from .. import audit, cs_client, verified_customer
 from ..knowledge import MOCK_CUSTOMERS
 
 FRAUD_KEYWORDS = [
@@ -38,10 +38,13 @@ FORM_MARKERS = ("a few quick details", "några snabba detaljer")
 
 PNR_RE = re.compile(r"\d{6,8}[-\s]?\d{4}")
 TXN_ID_RE = re.compile(r"TXN-\d{4}-\d{2}", re.IGNORECASE)
-ROW_NUMBER_RE = re.compile(
-    r"(?:number|row|transaction|#)\s*\b(10|[1-9])\b|^\s*(10|[1-9])\s*$|\b(10|[1-9])(?:st|nd|rd|th)?\b",
-    re.IGNORECASE,
-)
+# The transaction-select form (below) composes its answer as "Selected
+# transactions: TXN-..., TXN-..."; this narrows matching to just that list
+# when present, so a stray TXN-shaped substring elsewhere in the message
+# can't sneak in. Falls back to scanning the whole message so a customer
+# who types one or more IDs by hand (instead of using the checkboxes)
+# still works - see _resolve_transactions.
+SELECTED_TXN_RE = re.compile(r"selected transactions?:\s*(.+)", re.IGNORECASE)
 
 
 def wants_fraud_or_dispute(history: list[dict]) -> str | None:
@@ -99,24 +102,29 @@ def _transactions_already_shown(history: list[dict]) -> bool:
     )
 
 
-def _resolve_transaction(customer: dict, history: list[dict]) -> dict | None:
-    last_user = _last_user_message(history)
-
-    id_match = TXN_ID_RE.search(last_user)
-    if id_match:
-        txn_id = id_match.group(0).upper()
+def _dedupe_txn_ids(customer: dict, raw_ids: list[str]) -> list[dict]:
+    seen: set[str] = set()
+    result = []
+    for raw_id in raw_ids:
+        txn_id = raw_id.upper()
+        if txn_id in seen:
+            continue
         found = next((t for t in customer["transactions"] if t["id"] == txn_id), None)
         if found:
-            return found
+            result.append(found)
+            seen.add(txn_id)
+    return result
 
-    row_match = ROW_NUMBER_RE.search(last_user)
-    if row_match:
-        digits = next(g for g in row_match.groups() if g)
-        idx = int(digits) - 1
-        if 0 <= idx < len(customer["transactions"]):
-            return customer["transactions"][idx]
 
-    return None
+def _resolve_transactions(customer: dict, history: list[dict]) -> list[dict]:
+    """One or more transactions the customer is disputing/reporting, in the
+    order they picked them. Reads the transaction-select form's composed
+    answer when present ("Selected transactions: TXN-..., TXN-..."), or
+    falls back to scanning the raw message for TXN ids typed by hand."""
+    last_user = _last_user_message(history)
+    selected_match = SELECTED_TXN_RE.search(last_user)
+    source_text = selected_match.group(1) if selected_match else last_user
+    return _dedupe_txn_ids(customer, TXN_ID_RE.findall(source_text))
 
 
 def _form_already_shown(history: list[dict]) -> bool:
@@ -175,26 +183,36 @@ TEXT = {
         ),
         "txn_intro": (
             "Thanks, {name} - I've verified your identity. Here are your 10 most recent "
-            "transactions. Reply with either the row number or the Transaction ID of the one "
-            "you mean:\n\n"
+            "transactions - check every one that looks wrong to you, then select "
+            "\"Dispute selected transactions\" below."
         ),
-        "txn_outro": "",
         "clarify_selection": (
-            "Sorry, I couldn't tell which transaction you meant. Please reply with either the "
-            "row number (1-10) or the Transaction ID (e.g. TXN-1001-05) from the list above."
+            "Sorry, I couldn't tell which transaction(s) you meant. Please use the checkboxes "
+            "above, or reply with the Transaction ID(s), e.g. TXN-1001-05."
         ),
-        "form_intro": (
+        "form_intro_one": (
             "Got it - transaction {txn_id} ({date}, {merchant}, {amount}). I just need "
             "a few quick details before I open the case:"
+        ),
+        "form_intro_many": (
+            "Got it - {count} transactions selected:\n{lines}\n\nI just need a few quick "
+            "details before I open the case:"
         ),
         "form_retry": (
             "I didn't quite catch all three answers - could you fill in the form above, or "
             "reply with all three lines: \"Suspected place of fraud: ...\", \"Block debit "
             "card: Yes/No\", \"Block debits on account: Yes/No\"?"
         ),
-        "confirmation": (
+        "confirmation_one": (
             "Thanks, {name} - I've opened a {case_type} case for transaction {txn_id} "
             "({date}, {merchant}, {amount}).\n\n"
+            "Case ID: {case_id}\n"
+            "A Customer Service representative will review it and follow up with you.\n\n"
+            "Is there anything else I can help you with today?"
+        ),
+        "confirmation_many": (
+            "Thanks, {name} - I've opened a {case_type} case covering {count} transactions:\n"
+            "{lines}\n\n"
             "Case ID: {case_id}\n"
             "A Customer Service representative will review it and follow up with you."
         ),
@@ -210,25 +228,36 @@ TEXT = {
         ),
         "txn_intro": (
             "Tack, {name} - jag har verifierat din identitet. Här är dina 10 senaste "
-            "transaktioner. Svara med antingen radnumret eller transaktions-ID:t för den du menar:\n\n"
+            "transaktioner - kryssa för alla som ser felaktiga ut och välj sedan "
+            "\"Bestrid valda transaktioner\" nedan."
         ),
-        "txn_outro": "",
         "clarify_selection": (
-            "Jag kunde tyvärr inte avgöra vilken transaktion du menade. Svara gärna med "
-            "radnumret (1-10) eller transaktions-ID:t (t.ex. TXN-1001-05) från listan ovan."
+            "Jag kunde tyvärr inte avgöra vilken/vilka transaktion(er) du menade. Använd "
+            "kryssrutorna ovan, eller svara med transaktions-ID:t/ID:n, t.ex. TXN-1001-05."
         ),
-        "form_intro": (
+        "form_intro_one": (
             "Uppfattat - transaktion {txn_id} ({date}, {merchant}, {amount}). Jag behöver "
             "bara några snabba detaljer innan jag öppnar ärendet:"
+        ),
+        "form_intro_many": (
+            "Uppfattat - {count} transaktioner valda:\n{lines}\n\nJag behöver bara några "
+            "snabba detaljer innan jag öppnar ärendet:"
         ),
         "form_retry": (
             "Jag fick inte med alla tre svar - kan du fylla i formuläret ovan, eller svara "
             "med alla tre rader: \"Suspected place of fraud: ...\", \"Block debit card: "
             "Yes/No\", \"Block debits on account: Yes/No\"?"
         ),
-        "confirmation": (
+        "confirmation_one": (
             "Tack, {name} - jag har öppnat ett {case_type_sv}-ärende för transaktionen "
             "{txn_id} ({date}, {merchant}, {amount}).\n\n"
+            "Ärende-ID: {case_id}\n"
+            "En kundtjänstmedarbetare granskar det och återkommer till dig.\n\n"
+            "Kan jag hjälpa dig med något annat idag?"
+        ),
+        "confirmation_many": (
+            "Tack, {name} - jag har öppnat ett {case_type_sv}-ärende som omfattar "
+            "{count} transaktioner:\n{lines}\n\n"
             "Ärende-ID: {case_id}\n"
             "En kundtjänstmedarbetare granskar det och återkommer till dig."
         ),
@@ -237,37 +266,30 @@ TEXT = {
 
 SUGGESTIONS = {
     "en": {
-        "clarify_selection": ["It was number 10", "Try TXN-1001-05"],
+        "clarify_selection": ["Try TXN-1001-05", "TXN-1001-01 and TXN-1001-09"],
         "form_retry": ["Let me fill it in again"],
     },
     "sv": {
-        "clarify_selection": ["Det var nummer 10", "Prova TXN-1001-05"],
+        "clarify_selection": ["Prova TXN-1001-05", "TXN-1001-01 och TXN-1001-09"],
         "form_retry": ["Jag fyller i igen"],
     },
 }
 
 
-def _txn_line(idx: int, t: dict) -> str:
-    return f"{idx + 1}. **{t['id']}** — {t['date']}, {t['merchant']}, {t['amount']}"
-
-
-def _resolve_selected_transaction_from_assistant(customer: dict, history: list[dict]) -> dict | None:
+def _resolve_selected_transactions_from_assistant(customer: dict, history: list[dict]) -> list[dict]:
     """Once the form has been shown, the customer's next reply is their
     form answers, not a transaction reference - so re-deriving "which
-    transaction" from the latest USER message would fail (it has no ID or
-    number in it). Instead, re-derive it from our OWN prior message that
-    showed the form, which always states the transaction ID literally."""
+    transaction(s)" from the latest USER message would fail (it has no ID
+    in it). Instead, re-derive them from our OWN prior message that showed
+    the form, which always states every selected transaction ID literally."""
     for m in reversed(history):
         if m.get("role") != "assistant":
             continue
         content = m.get("content") or ""
         if not any(marker in content for marker in FORM_MARKERS):
             continue
-        id_match = TXN_ID_RE.search(content)
-        if id_match:
-            txn_id = id_match.group(0).upper()
-            return next((t for t in customer["transactions"] if t["id"] == txn_id), None)
-    return None
+        return _dedupe_txn_ids(customer, TXN_ID_RE.findall(content))
+    return []
 
 
 def run_fraud_dispute_agent(history: list[dict], lang: str | None, case_type: str) -> tuple[str, list[str], dict]:
@@ -288,44 +310,54 @@ def run_fraud_dispute_agent(history: list[dict], lang: str | None, case_type: st
         return t["not_verified"], [], {"form": IDENTITY_FORM}
 
     if not _transactions_already_shown(history):
+        verified_customer.mark_verified(customer["customer_id"])
         audit.record_event(
             agent="fraud_dispute_agent", action="verify_identity", customer_id=customer["customer_id"],
             decision="VERIFIED", details={"case_type": case_type},
         )
-        listing = "\n".join(_txn_line(i, txn) for i, txn in enumerate(customer["transactions"]))
         audit.record_event(
             agent="fraud_dispute_agent", action="list_transactions", customer_id=customer["customer_id"],
             decision="SHOWN", details={"count": len(customer["transactions"])},
         )
-        reply = t["txn_intro"].format(name=customer["name"]) + listing + t["txn_outro"]
-        return reply, [], {}
+        reply = t["txn_intro"].format(name=customer["name"])
+        form = {"type": "transaction_select", "transactions": customer["transactions"]}
+        return reply, [], {"form": form}
 
     if _form_already_shown(history):
-        # Expecting the customer's form answers now - the transaction was
-        # already fixed when the form was shown, re-derive it from there.
-        transaction = _resolve_selected_transaction_from_assistant(customer, history)
-        if transaction is None:
+        # Expecting the customer's form answers now - the transaction(s)
+        # were already fixed when the form was shown, re-derive them from
+        # there rather than the latest user message (which has no txn ID
+        # in it at this point, just the form answers).
+        transactions = _resolve_selected_transactions_from_assistant(customer, history)
+        if not transactions:
             return t["clarify_selection"], s["clarify_selection"], {}
 
         answers = _parse_form_answers(history)
         if answers is None:
             return t["form_retry"], s["form_retry"], {"form_retry": True}
     else:
-        transaction = _resolve_transaction(customer, history)
-        if transaction is None:
+        transactions = _resolve_transactions(customer, history)
+        if not transactions:
             return t["clarify_selection"], s["clarify_selection"], {}
 
         audit.record_event(
-            agent="fraud_dispute_agent", action="select_transaction", customer_id=customer["customer_id"],
-            decision="SELECTED", details={"transaction": transaction, "case_type": case_type},
+            agent="fraud_dispute_agent", action="select_transactions", customer_id=customer["customer_id"],
+            decision="SELECTED",
+            details={"transactions": [txn["id"] for txn in transactions], "case_type": case_type},
         )
-        reply = t["form_intro"].format(
-            txn_id=transaction["id"], date=transaction["date"],
-            merchant=transaction["merchant"], amount=transaction["amount"],
-        )
+        if len(transactions) == 1:
+            txn = transactions[0]
+            reply = t["form_intro_one"].format(
+                txn_id=txn["id"], date=txn["date"], merchant=txn["merchant"], amount=txn["amount"],
+            )
+        else:
+            lines = "\n".join(
+                f"- {txn['id']} — {txn['date']}, {txn['merchant']}, {txn['amount']}" for txn in transactions
+            )
+            reply = t["form_intro_many"].format(count=len(transactions), lines=lines)
         form = {
             "type": "fraud_dispute_details",
-            "transaction_id": transaction["id"],
+            "transaction_ids": [txn["id"] for txn in transactions],
             "fields": [
                 {"name": "place", "label": "Suspected place of fraud", "type": "text"},
                 {"name": "block_card", "label": "Block Debit Card?", "type": "yesno"},
@@ -334,14 +366,14 @@ def run_fraud_dispute_agent(history: list[dict], lang: str | None, case_type: st
         }
         return reply, [], {"form": form}
 
+    txn_summary = "; ".join(f"{txn['id']} ({txn['date']}, {txn['merchant']}, {txn['amount']})" for txn in transactions)
     description = (
-        f"{case_type.title()} report for transaction {transaction['id']} "
-        f"({transaction['date']}, {transaction['merchant']}, {transaction['amount']}). "
+        f"{case_type.title()} report for {len(transactions)} transaction(s): {txn_summary}. "
         f"Suspected place of fraud: {answers['place']}."
     )
     extra = {
-        "transactionId": transaction["id"],
-        "transactionDetails": f"{transaction['date']} — {transaction['merchant']} — {transaction['amount']}",
+        "transactionIds": ", ".join(txn["id"] for txn in transactions),
+        "transactionDetails": "; ".join(f"{txn['date']} — {txn['merchant']} — {txn['amount']}" for txn in transactions),
         "suspectedPlaceOfFraud": answers["place"],
         "blockDebitCard": answers["block_card"],
         "blockDebitsOnAccount": answers["block_account"],
@@ -354,9 +386,19 @@ def run_fraud_dispute_agent(history: list[dict], lang: str | None, case_type: st
         decision=case_type.upper(), details={"case_id": case_id, "status": status, **extra},
     )
 
-    reply = t["confirmation"].format(
-        name=customer["name"], case_type=case_type, case_type_sv=("bedrägeri" if case_type == "fraud" else "bestridande"),
-        txn_id=transaction["id"], date=transaction["date"], merchant=transaction["merchant"],
-        amount=transaction["amount"], case_id=case_id,
-    )
+    case_type_sv = "bedrägeri" if case_type == "fraud" else "bestridande"
+    if len(transactions) == 1:
+        txn = transactions[0]
+        reply = t["confirmation_one"].format(
+            name=customer["name"], case_type=case_type, case_type_sv=case_type_sv,
+            txn_id=txn["id"], date=txn["date"], merchant=txn["merchant"], amount=txn["amount"], case_id=case_id,
+        )
+    else:
+        lines = "\n".join(
+            f"- {txn['id']} — {txn['date']}, {txn['merchant']}, {txn['amount']}" for txn in transactions
+        )
+        reply = t["confirmation_many"].format(
+            name=customer["name"], case_type=case_type, case_type_sv=case_type_sv,
+            count=len(transactions), lines=lines, case_id=case_id,
+        )
     return reply, [], {}

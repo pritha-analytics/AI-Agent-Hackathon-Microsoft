@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#eaf1f8"/>
+  <circle cx="256" cy="40" r="34" fill="#fdeaea"/>
+  <path d="M160 34 L242 96 L226 96 L226 150 L94 150 L94 96 L78 96 Z" fill="#0d3b66"/>
+  <rect x="112" y="112" width="34" height="38" fill="#eaf1f8"/>
+  <rect x="174" y="112" width="34" height="26" fill="#ffffff"/>
+  <rect x="0" y="150" width="320" height="30" fill="#0d3b66"/>
+  <text x="160" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="700">Home Loan</text>
+  <text x="256" y="45" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#e0202c" text-anchor="middle" font-weight="700">%</text>
+</svg>

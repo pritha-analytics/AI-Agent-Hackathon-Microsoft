@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#eaf1f8"/>
+  <ellipse cx="160" cy="100" rx="52" ry="44" fill="#0d3b66"/>
+  <circle cx="200" cy="70" r="10" fill="#0d3b66"/>
+  <rect x="192" y="60" width="4" height="10" fill="#eaf1f8"/>
+  <circle cx="140" cy="92" r="4" fill="#ffffff"/>
+  <rect x="150" y="140" width="6" height="14" fill="#0d3b66"/>
+  <rect x="180" y="140" width="6" height="14" fill="#0d3b66"/>
+  <rect x="135" y="150" width="60" height="8" rx="3" fill="#e0202c"/>
+  <rect x="0" y="150" width="320" height="30" fill="#0d3b66"/>
+  <text x="160" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="700">Pension Savings</text>
+</svg>

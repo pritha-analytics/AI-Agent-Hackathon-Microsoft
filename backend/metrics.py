@@ -59,7 +59,17 @@ def record_handoff(session_id: str | None, topic: str) -> None:
 
 
 def record_rating(session_id: str | None, rating: int) -> None:
-    _write({"type": "rating", "session_id": session_id, "rating": rating})
+    """Also tags the rating with whatever topic that session was last about
+    (from its own interaction events) - a bare 1-5 number isn't actionable
+    on its own; knowing WHICH kind of conversation earned a 3 or a 4 is what
+    turns it into real customer insight (see build_summary's
+    customer_insights, which groups by this field)."""
+    topic = None
+    if session_id:
+        session_interactions = [e for e in read_events("interaction") if e.get("session_id") == session_id]
+        if session_interactions:
+            topic = session_interactions[-1].get("topic")
+    _write({"type": "rating", "session_id": session_id, "rating": rating, "topic": topic})
 
 
 def record_llm_usage(
@@ -68,13 +78,16 @@ def record_llm_usage(
     completion_tokens: int | None,
     total_tokens: int | None,
     duration_ms: float | None,
+    topic: str | None = None,
+    session_id: str | None = None,
 ) -> None:
     """Logged automatically for every LLM call, from a single wrapper point
-    in llm_client.py - see the note there. Deliberately not attributed to a
-    session/topic: that would require threading session context through
-    every agent's tool-calling loop, which none of them currently take as a
-    parameter. Global token-consumption rollups (day/week/month/year) don't
-    need that attribution; per-topic cost breakdown would be a follow-up."""
+    in llm_client.py - see the note there. topic/session_id come from
+    interaction_context.py's per-request contextvar (set in main.py's
+    /api/chat before calling run_agent), not a parameter every agent has to
+    thread through its own tool-calling loop - this is what makes the
+    per-topic token trend and the satisfaction/latency correlation below
+    possible without touching every agent's call sites."""
     _write({
         "type": "llm_call",
         "model": model,
@@ -82,6 +95,8 @@ def record_llm_usage(
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
         "duration_ms": round(duration_ms, 1) if duration_ms is not None else None,
+        "topic": topic,
+        "session_id": session_id,
     })
 
 
@@ -127,6 +142,127 @@ def _tokens_bucket(llm_events: list[dict], since: datetime | None) -> dict:
     completion = sum(e.get("completion_tokens") or 0 for e in bucket)
     total = sum(e.get("total_tokens") or (e.get("prompt_tokens") or 0) + (e.get("completion_tokens") or 0) for e in bucket)
     return {"calls": len(bucket), "prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total}
+
+
+def _iso_week_label(dt: datetime) -> str:
+    year, week, _ = dt.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def token_trend_by_topic(weeks: int = 6, top_n: int = 5) -> dict:
+    """Total tokens consumed per topic, per week, for the AI Analytics
+    section's "which chat subjects are costing the most tokens, and is
+    that going up or down" trend. Only topics attributed after
+    interaction_context.py started threading topic through llm_client.py
+    show up here - older llm_call rows (topic missing) fall into
+    "unclassified" rather than being dropped, so historical totals still
+    show up somewhere instead of silently vanishing."""
+    now = _now()
+    week_labels = [_iso_week_label(now - timedelta(weeks=i)) for i in range(weeks - 1, -1, -1)]
+    week_index = {label: i for i, label in enumerate(week_labels)}
+
+    llm_calls = read_events("llm_call")
+    cutoff = now - timedelta(weeks=weeks)
+    per_topic_week: dict[str, list[int]] = {}
+    topic_totals: Counter[str] = Counter()
+
+    for e in llm_calls:
+        ts = _parse_ts(e["ts"])
+        if ts < cutoff:
+            continue
+        label = _iso_week_label(ts)
+        idx = week_index.get(label)
+        if idx is None:
+            continue
+        topic = e.get("topic") or "unclassified"
+        tokens = e.get("total_tokens") or 0
+        per_topic_week.setdefault(topic, [0] * weeks)[idx] += tokens
+        topic_totals[topic] += tokens
+
+    top_topics = [t for t, _ in topic_totals.most_common(top_n)]
+    other_topics = [t for t in per_topic_week if t not in top_topics]
+
+    series = []
+    for topic in top_topics:
+        series.append({
+            "topic": topic,
+            "label": TOPIC_LABELS.get(topic, topic.replace("_", " ").title()) if topic != "unclassified" else "Unclassified (older data)",
+            "tokens_by_week": per_topic_week[topic],
+            "total_tokens": topic_totals[topic],
+        })
+    if other_topics:
+        other_by_week = [0] * weeks
+        for topic in other_topics:
+            for i, v in enumerate(per_topic_week[topic]):
+                other_by_week[i] += v
+        series.append({
+            "topic": "other",
+            "label": "Other topics",
+            "tokens_by_week": other_by_week,
+            "total_tokens": sum(other_by_week),
+        })
+
+    return {"weeks": week_labels, "series": series}
+
+
+def _pearson_correlation(xs: list[float], ys: list[float]) -> float | None:
+    n = len(xs)
+    if n < 2:
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    covariance = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    variance_x = sum((x - mean_x) ** 2 for x in xs)
+    variance_y = sum((y - mean_y) ** 2 for y in ys)
+    denominator = (variance_x * variance_y) ** 0.5
+    if denominator == 0:
+        return None
+    return round(covariance / denominator, 3)
+
+
+def satisfaction_latency_correlation() -> dict:
+    """Does a slower Sara correlate with a less happy customer? Pairs each
+    rated session with that session's average LLM round-trip latency (both
+    keyed by session_id via interaction_context.py) and reports a Pearson
+    correlation coefficient plus an avg-latency-per-rating breakdown for
+    the chart. A negative coefficient is the expected direction (higher
+    rating, lower latency); near zero means latency isn't what's driving
+    satisfaction in this data."""
+    ratings_by_session: dict[str, int] = {}
+    for e in read_events("rating"):
+        sid = e.get("session_id")
+        if sid and isinstance(e.get("rating"), int):
+            ratings_by_session[sid] = e["rating"]  # last rating wins if a session rated twice
+
+    latency_by_session: dict[str, list[float]] = {}
+    for e in read_events("llm_call"):
+        sid = e.get("session_id")
+        duration = e.get("duration_ms")
+        if sid and isinstance(duration, (int, float)):
+            latency_by_session.setdefault(sid, []).append(duration)
+
+    pairs = [
+        (sum(latency_by_session[sid]) / len(latency_by_session[sid]), rating)
+        for sid, rating in ratings_by_session.items()
+        if sid in latency_by_session
+    ]
+
+    by_rating = []
+    for rating in range(1, 6):
+        latencies = [lat for lat, r in pairs if r == rating]
+        by_rating.append({
+            "rating": rating,
+            "avg_latency_ms": round(sum(latencies) / len(latencies), 1) if latencies else None,
+            "session_count": len(latencies),
+        })
+
+    coefficient = _pearson_correlation([lat for lat, _ in pairs], [r for _, r in pairs])
+
+    return {
+        "by_rating": by_rating,
+        "correlation_coefficient": coefficient,
+        "sample_size": len(pairs),
+    }
 
 
 def build_summary(days: int = 14) -> dict:
@@ -191,6 +327,31 @@ def build_summary(days: int = 14) -> dict:
     rating_distribution = {str(n): rating_values.count(n) for n in range(1, 6)}
     avg_rating = round(sum(rating_values) / len(rating_values), 2) if rating_values else None
 
+    # --- Customer insight: satisfaction broken down by topic, worst first -
+    # this is the actionable view (which kinds of conversations are leaving
+    # customers only "OK" or worse), not just one global average. A topic
+    # needs at least 2 ratings before it's flagged, so a single fluke score
+    # doesn't brand a whole topic as a problem.
+    topic_ratings: dict[str, list[int]] = {}
+    for e in ratings:
+        rating_value = e.get("rating")
+        if not isinstance(rating_value, int):
+            continue
+        topic_ratings.setdefault(e.get("topic") or "general_advisory", []).append(rating_value)
+    customer_insights = sorted(
+        (
+            {
+                "topic": topic,
+                "label": TOPIC_LABELS.get(topic, topic.replace("_", " ").title()),
+                "count": len(values),
+                "average": round(sum(values) / len(values), 2),
+                "needs_attention": len(values) >= 2 and (sum(values) / len(values)) < 3.5,
+            }
+            for topic, values in topic_ratings.items()
+        ),
+        key=lambda item: item["average"],
+    )
+
     # --- Token consumption rollups -----------------------------------------
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     tokens = {
@@ -234,6 +395,7 @@ def build_summary(days: int = 14) -> dict:
             "average": avg_rating,
             "distribution": rating_distribution,
         },
+        "customer_insights": customer_insights,
         "tokens": tokens,
         "technical": {
             "total_llm_calls": len(llm_calls),
@@ -241,4 +403,6 @@ def build_summary(days: int = 14) -> dict:
             "avg_tokens_per_call": round(tokens["all_time"]["total_tokens"] / len(llm_calls), 1) if llm_calls else 0,
             "models_used": dict(models_used),
         },
+        "token_trend_by_topic": token_trend_by_topic(),
+        "satisfaction_latency_correlation": satisfaction_latency_correlation(),
     }

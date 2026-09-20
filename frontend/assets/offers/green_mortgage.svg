@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#eaf6ee"/>
+  <path d="M160 34 L242 96 L226 96 L226 150 L94 150 L94 96 L78 96 Z" fill="#1a7a4c"/>
+  <rect x="112" y="112" width="34" height="38" fill="#eaf6ee"/>
+  <rect x="174" y="112" width="34" height="26" fill="#ffffff"/>
+  <path d="M256 30 C244 30 236 42 240 54 C244 66 256 70 256 70 C256 70 268 66 272 54 C276 42 268 30 256 30 Z" fill="#1a7a4c"/>
+  <path d="M256 70 L256 40" stroke="#eaf6ee" stroke-width="3" fill="none"/>
+  <rect x="0" y="150" width="320" height="30" fill="#1a7a4c"/>
+  <text x="160" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="700">Green Mortgage</text>
+</svg>

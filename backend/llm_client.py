@@ -6,7 +6,7 @@ import time
 
 from openai import OpenAI
 
-from . import config, metrics
+from . import config, interaction_context, metrics
 
 client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
 
@@ -22,12 +22,15 @@ def _instrumented_create(*args, **kwargs):
     response = _original_create(*args, **kwargs)
     duration_ms = (time.monotonic() - start) * 1000
     usage = getattr(response, "usage", None)
+    ctx = interaction_context.get_context()
     metrics.record_llm_usage(
         model=kwargs.get("model"),
         prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
         completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
         total_tokens=getattr(usage, "total_tokens", None) if usage else None,
         duration_ms=duration_ms,
+        topic=ctx.get("topic"),
+        session_id=ctx.get("session_id"),
     )
     return response
 

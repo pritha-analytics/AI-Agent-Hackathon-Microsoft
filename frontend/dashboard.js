@@ -39,7 +39,7 @@ function renderInline(raw) {
 }
 
 function roleLabel(role) {
-  if (role === "assistant") return "Sara · AI assistant";
+  if (role === "assistant") return "Sara · Digital Companion";
   if (role === "human") return "Support (human)";
   return "Customer";
 }

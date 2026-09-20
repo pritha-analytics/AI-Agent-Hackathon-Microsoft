@@ -50,7 +50,6 @@ function openWidget(text) {
     frameEl.src = "index.html";
   }
   widgetEl.hidden = false;
-  fabBtn.textContent = "💬";
   if (text) sendToChat(text);
 }
 
@@ -90,7 +89,6 @@ closeBtn.addEventListener("click", closeWidget);
 maximizeBtn.addEventListener("click", () => setSizeMode(sizeMode === "compact" ? "medium" : "compact"));
 fullscreenBtn.addEventListener("click", () => setSizeMode(sizeMode === "fullscreen" ? "medium" : "fullscreen"));
 
-document.getElementById("nav-chat-btn")?.addEventListener("click", () => openWidget());
 document.getElementById("hero-chat-btn").addEventListener("click", () => openWidget());
 
 document.getElementById("footer-chat-link").addEventListener("click", (event) => {
@@ -98,6 +96,12 @@ document.getElementById("footer-chat-link").addEventListener("click", (event) =>
   openWidget();
 });
 
-document.querySelectorAll(".moment-card, .cta-band-btn").forEach((btn) => {
+// Every card/button that carries a data-text opens the chat with that
+// starter message - covers the "life moments" grid, the product icon grid,
+// the "Popular" quick-link buttons, and the become-a-customer CTA band.
+// Purely decorative elements (search, log in, the Private/Business tabs,
+// the app/BankID quick links) intentionally have no handler - this demo
+// doesn't implement real search, auth, or those linked products.
+document.querySelectorAll("[data-text]").forEach((btn) => {
   btn.addEventListener("click", () => openWidget(btn.dataset.text));
 });

@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<html lang="sv">
-
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,378 +7,252 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="site.css" />
 </head>
-
 <body class="site-body">
-  <header class="site-nav">
-    <a class="site-logo" href="#" aria-label="LF Bergslagen">
-      <img src="lf-logo.png" alt="LF Bergslagen" width="277" height="66" />
-    </a>
-    <nav class="site-links" aria-label="Huvudmeny">
-      <a href="#insurance">Försäkringar</a>
-      <a href="#bank">Bank</a>
-      <a href="#pension">Pension</a>
-      <a href="#about">Om oss</a>
-      <a href="#support">Kontakta oss</a>
-    </nav>
-    <div class="site-tools">
-      <a class="site-tool" href="#county">
-        <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" />
-          <circle cx="12" cy="10" r="2.5" />
-        </svg>
-        <span>County</span>
-      </a>
-      <a class="site-tool" href="#search">
-        <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="M16 16l4.5 4.5" />
-        </svg>
-        <span>Search</span>
-      </a>
-      <a class="site-tool" href="#login">
-        <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="5" y="11" width="14" height="9.5" rx="2" />
-          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-        </svg>
-        <span>Log in</span>
-      </a>
-      <a class="site-tool" href="#menu">
-        <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 7h16M4 12h16M4 17h16" />
-        </svg>
-        <span>Menu</span>
-      </a>
+  <div class="site-utility-bar">
+    <div class="site-utility-tabs">
+      <a href="#" class="site-utility-tab active">Private</a>
+      <a href="#" class="site-utility-tab">Business &amp; Agriculture</a>
     </div>
+  </div>
+
+  <header class="site-nav">
+    <div class="site-logo">
+      <img class="site-logo-mark" src="assets/brand/lf-bergslagen-logo.svg" alt="LF Bergslagen" />
+    </div>
+    <nav class="site-icon-links">
+      <button type="button" class="site-icon-link" id="nav-county-btn">
+        <img class="site-icon-link-glyph-svg" src="assets/icons/icon-nav-county.svg" alt="" /><span>County</span>
+      </button>
+      <button type="button" class="site-icon-link" id="nav-search-btn">
+        <img class="site-icon-link-glyph-svg" src="assets/icons/icon-search.svg" alt="" /><span>Search</span>
+      </button>
+      <button type="button" class="site-icon-link" id="nav-login-btn">
+        <img class="site-icon-link-glyph-svg" src="assets/icons/icon-login.svg" alt="" /><span>Log in</span>
+      </button>
+      <a href="#products" class="site-icon-link">
+        <span class="site-icon-link-glyph">☰</span><span>Menu</span>
+      </a>
+    </nav>
   </header>
 
   <main>
     <section class="hero">
       <div class="hero-copy">
-        <h1>Life brings changes.<br />We help you <span class="nowrap">navigate them.</span></h1>
+        <h1>Life brings changes.<br />We help you navigate them.</h1>
         <p>
           From buying your first home to planning retirement, LF Bergslagen's
-          digital assistant Sara is ready around the clock with answers,
+          digital companion Sara is ready around the clock with answers,
           guidance, and a direct line to a real advisor when you need one.
         </p>
         <div class="hero-actions">
           <button id="hero-chat-btn" class="btn btn-primary" type="button">
-            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
-            </svg>
-            Chat with Sara
+            <img class="btn-icon" src="assets/icons/icon-chat.svg" alt="" /> Chat with Sara
           </button>
           <a href="#life-moments" class="btn btn-secondary">See what we help with</a>
         </div>
       </div>
-      <div class="hero-art">
-        <svg class="hero-illustration" viewBox="0 0 720 430" role="img"
-          aria-labelledby="hero-illustration-title hero-illustration-desc">
-          <title id="hero-illustration-title">Trygghet i vardagen</title>
-          <desc id="hero-illustration-desc">En linjeteckning med ett hus, en stor paraply över två personer, en cykel,
-            träd, sol, moln, fåglar, en plånbok och ett dokument.</desc>
-          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4">
-            <!-- sun and cloud -->
-            <circle cx="112" cy="50" r="16" />
-            <path
-              d="M112 28V22M127.6 34.4l4.2-4.2M134 50h6M127.6 65.6l4.2 4.2M90 50h-6M96.4 34.4l-4.2-4.2" />
-            <path d="M36 114C20 114 18 92 36 90C36 76 60 72 68 86C80 76 102 82 98 98C112 98 112 114 98 114Z" />
-
-            <!-- birds -->
-            <path d="M528 50q5-7 10 0q5-7 10 0M566 70q8-10 16 0q8-10 16 0M600 96q6-8 12 0q6-8 12 0" />
-
-            <!-- floating document -->
-            <g transform="rotate(8 637 151)">
-              <path d="M612 116H648L662 130V186H612Z" />
-              <path d="M622 142H652M622 154H652" />
-            </g>
-            <path d="M606 108l-6-6M668 108l6-6M674 150h8" />
-
-            <!-- house -->
-            <path d="M110 190L22 252H198" />
-            <path d="M38 252L110 202L182 252" />
-            <path d="M60 225V237M80 211V223M100 197V209M125 201V212M185 243V252M30 246V252" />
-            <path d="M150 218V184H170V232" />
-            <path d="M150 192H170" />
-            <circle cx="110" cy="226" r="10" />
-            <path d="M110 216V236M100 226H120" />
-            <path d="M36 252V400M184 252V400M36 316H184" />
-            <path
-              d="M54 268h28v32h-28zM96 268h28v32h-28zM138 268h28v32h-28zM68 268v32M54 284h28M110 268v32M96 284h28M152 268v32M138 284h28" />
-            <path d="M46 334h34v38h-34zM140 334h34v38h-34zM63 334v38M46 353h34M157 334v38M140 353h34M42 372H84M136 372H178" />
-            <path d="M96 400V336H124V400" />
-            <path d="M46 306H86M138 306H170M90 400V404H130V400" />
-
-            <!-- second cloud -->
-            <path d="M196 140C186 140 186 124 198 123C200 113 214 111 218 120C226 114 240 120 236 130C246 130 246 140 236 140Z" />
-
-            <!-- trees and fence -->
-            <circle cx="238" cy="296" r="30" />
-            <path d="M224 290q4-8 12-8M238 326V360M238 344l-10-10M238 338l10-8" />
-            <circle cx="276" cy="316" r="20" />
-            <path d="M268 310q3-6 9-6M276 336V360" />
-            <path d="M206 372H296M206 386H296M212 358V400M232 358V400M252 358V400M272 358V400M292 358V400" />
-            <circle cx="534" cy="356" r="16" />
-            <path d="M534 372V400M534 388l8-8M534 382l-7-7" />
-
-            <!-- umbrella -->
-            <path d="M290 172C296 108 346 72 400 72C454 72 504 108 510 172" />
-            <path d="M400 72C380 100 352 136 345 172M400 72C420 100 448 136 455 172M400 72V172" />
-            <path d="M400 172V266C400 284 384 286 384 272" />
-
-            <!-- figure holding the umbrella -->
-            <circle cx="350" cy="212" r="22" />
-            <path d="M328 216C324 190 348 182 364 190C376 196 378 210 374 220M338 200C346 204 358 204 370 196" />
-            <path d="M344 234V244M356 234V244" />
-            <path d="M344 244C324 246 312 258 312 284V344H372V276" />
-            <path d="M356 246C372 246 386 252 396 262C402 262 404 270 396 272C390 272 382 274 372 276" />
-            <path d="M350 246V344M322 306H334M344 244L350 262L356 244" />
-            <circle cx="344" cy="282" r="1.2" />
-            <circle cx="344" cy="300" r="1.2" />
-            <path d="M330 266L326 318M316 344H326M366 344H372" />
-            <path d="M328 344V400M356 344V400M320 400H336M350 400H366" />
-
-            <!-- figure beside -->
-            <circle cx="452" cy="240" r="19" />
-            <path d="M433 242C430 222 448 214 464 220C474 224 474 236 471 244M440 228C450 230 460 228 468 222" />
-            <path d="M447 259V268M457 259V268" />
-            <path d="M447 268C430 270 420 278 418 296L414 332H428L431 290" />
-            <path d="M457 268C474 270 484 278 486 296L490 332H476L473 290" />
-            <path d="M431 276V340H473V276" />
-            <path d="M462 334h26v24h-26zM462 344h26" />
-            <path d="M440 340V400M464 340V400M434 400H446M458 400H470" />
-            <path d="M438 292h9v9h-9z" />
-
-            <!-- wallet -->
-            <g transform="rotate(-6 557 298)">
-              <path
-                d="M526 278H588a6 6 0 0 1 6 6V312a6 6 0 0 1-6 6H526a6 6 0 0 1-6-6V284a6 6 0 0 1 6-6ZM594 292H580a6 6 0 0 0 0 12H594M530 278L536 266H574L578 278" />
-              <circle cx="581" cy="298" r="1.5" />
-            </g>
-            <path d="M512 306v8M508 310h8" />
-
-            <!-- bicycle -->
-            <circle cx="600" cy="372" r="28" />
-            <circle cx="664" cy="372" r="28" />
-            <circle cx="600" cy="372" r="3" />
-            <circle cx="664" cy="372" r="3" />
-            <circle cx="632" cy="372" r="5" />
-            <path
-              d="M600 372L618 336L632 372ZM618 336H652L632 372M600 372H632M652 336L664 372M652 336L650 322H662M610 330H624M618 330V336M626 380H638" />
-
-            <!-- ground -->
-            <path d="M6 400H710" />
-            <path d="M40 418h30M86 418h12M330 418h44M392 418h10M470 418h36M600 418h40" />
-            <path d="M190 400l2-8 2 8M300 400l2-7 2 7M304 400l2-5 2 5M508 400l2-8 2 8M512 400l2-5 2 5M566 400l2-7 2 7" />
-
-            <!-- coral accents: drawn last so they sit on top of the navy line art (stroke only, no fills) -->
-            <g class="accent">
-              <path d="M110 190L198 252" />
-              <circle cx="118" cy="370" r="1.5" />
-              <path d="M290 172Q317 150 345 172Q372 150 400 172Q428 150 455 172Q482 150 510 172" />
-              <path d="M400 72V54M397 54H403" />
-              <path d="M440 272L474 338" />
-              <path d="M447 268L452 276L457 268" />
-              <path d="M604 257L610 266L604 275L598 266Z" />
-              <path d="M268 76L274 85L268 94L262 85Z" />
-              <g transform="rotate(8 637 151)">
-                <path d="M648 116V130H662" />
-                <path d="M622 166H642" />
-              </g>
-            </g>
-          </g>
-        </svg>
+      <div class="hero-art" aria-hidden="true">
+        <img class="hero-illustration" src="assets/illustrations/illus-communication.svg" alt="" />
       </div>
     </section>
 
-    <section class="popular" aria-labelledby="popular-title">
-      <div class="section-heading">
-        <span class="section-kicker">För dig och din vardag</span>
-        <h2 id="popular-title">Populärt</h2>
-      </div>
-      <div class="popular-grid">
-        <a class="popular-card" href="#insurance">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M6 24L24 8L42 24M10 21V40H38V21M20 40V28H28V40M32 15V8H37V19" />
-          </svg>
-          <span class="popular-card-title">Hemförsäkring</span>
-        </a>
-        <a class="popular-card" href="#insurance">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M7 29L11 20Q12 17 16 17H32Q36 17 37 20L41 29V36H7ZM12 28L14.5 21H33.5L36 28ZM11 36V40H16V36M32 36V40H37V36M20 32H28" />
-            <circle cx="13" cy="32" r="1.5" />
-            <circle cx="35" cy="32" r="1.5" />
-          </svg>
-          <span class="popular-card-title">Bilförsäkring</span>
-        </a>
-        <a class="popular-card" href="#insurance">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <circle cx="23" cy="27" r="13" />
-            <rect x="12" y="11" width="20" height="8" rx="4" transform="rotate(-22 22 15)" />
-            <path d="M17 31q6 5 12 0M36 10L38 6M40 15L44 14M32 6V2" />
-            <circle cx="19" cy="27" r="1" />
-            <circle cx="28" cy="27" r="1" />
-          </svg>
-          <span class="popular-card-title">Sjukdom &amp; olycksfall</span>
-        </a>
-        <a class="popular-card" href="#insurance">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <circle cx="24" cy="26" r="14" />
-            <path d="M24 12q3-5 8-2M17 25q2 2.5 4 0M27 25q2 2.5 4 0M21 31q3 3 6 0" />
-          </svg>
-          <span class="popular-card-title">Barnförsäkring</span>
-        </a>
-        <a class="popular-card" href="#bank">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M8 26L24 12L40 26M12 23V40H36V23" />
-            <circle cx="19" cy="29" r="2.5" />
-            <circle cx="29" cy="35" r="2.5" />
-            <path d="M31 27L17 37" />
-          </svg>
-          <span class="popular-card-title">Bolån</span>
-        </a>
-        <a class="popular-card" href="#bank">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <rect x="8" y="14" width="32" height="26" rx="4" />
-            <path d="M12 14L32 8L34 14M40 24H33a4 4 0 0 0 0 8H40" />
-            <circle cx="33" cy="28" r="1" />
-          </svg>
-          <span class="popular-card-title">Bli bankkund</span>
-        </a>
-        <a class="popular-card" href="#pension">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M24 8L40 38H8ZM24 8V4M18 20H30M14 27H34M11 33H37" />
-          </svg>
-          <span class="popular-card-title">Pension</span>
-        </a>
-        <a class="popular-card" href="#support">
-          <svg class="card-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M10 6H34L40 12V42H10ZM34 6V12H40M10 22L20 26L18 32L28 34L26 42" />
-          </svg>
-          <span class="popular-card-title">Anmäl skada</span>
-        </a>
-      </div>
-    </section>
+    <div class="brand-strip" aria-hidden="true">
+      <img src="assets/brand/brand-strip.svg" alt="" />
+    </div>
 
-    <section id="about" class="welcome-section">
-      <h2>Välkommen till LF Bergslagen</h2>
-      <p>LF Bergslagen är ett lokalt och kundägt bolag med allt samlat under samma tak – försäkring, bank och pension.
-        Våra medarbetare finns nära till hands för snabb hjälp och personlig rådgivning.</p>
+    <section id="products" class="product-grid-section">
+      <h2>Insurance, bank and pension - all in one place</h2>
+      <p class="section-sub">Tap any product below to ask Sara about it.</p>
+      <div class="product-icon-grid">
+        <button class="product-icon-card" data-text="Tell me about home insurance">
+          <img class="product-icon-glyph" src="assets/icons/icon-home.svg" alt="" /><span>Home insurance</span>
+        </button>
+        <button class="product-icon-card" data-text="Can you compare car insurance levels, which one should I choose?">
+          <img class="product-icon-glyph" src="assets/icons/icon-car.svg" alt="" /><span>Car insurance</span>
+        </button>
+        <button class="product-icon-card" data-text="Tell me about accident and health insurance">
+          <img class="product-icon-glyph" src="assets/icons/icon-accident-health.svg" alt="" /><span>Accident &amp; health</span>
+        </button>
+        <button class="product-icon-card" data-text="Tell me about child insurance">
+          <img class="product-icon-glyph" src="assets/icons/icon-child.svg" alt="" /><span>Child insurance</span>
+        </button>
+        <button class="product-icon-card" data-text="I want to apply for a mortgage">
+          <img class="product-icon-glyph" src="assets/icons/icon-mortgage.svg" alt="" /><span>Mortgage</span>
+        </button>
+        <button class="product-icon-card" data-text="I'd like to become a customer">
+          <img class="product-icon-glyph" src="assets/icons/icon-wallet.svg" alt="" /><span>Become a customer</span>
+        </button>
+        <button class="product-icon-card" data-text="Tell me about pension and retirement savings">
+          <img class="product-icon-glyph" src="assets/icons/icon-pension.svg" alt="" /><span>Pension</span>
+        </button>
+        <button class="product-icon-card" data-text="I want to report a claim">
+          <img class="product-icon-glyph" src="assets/icons/icon-claim.svg" alt="" /><span>Report a claim</span>
+        </button>
+      </div>
     </section>
 
     <section id="life-moments" class="life-moments">
       <h2>What's changing in your life?</h2>
       <p class="section-sub">Tap one below to start a chat with Sara about it.</p>
       <div class="moment-grid">
-        <button class="moment-card" data-text="I'd like help with buying a house">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M6 24L24 8L42 24M10 21V40H38V21M20 40V29H28V40M32 15V9H37V19M13 26h4v4h-4z" />
-          </svg>
-          <span>Buying a house</span>
+        <button class="moment-card" data-text="I'd like help with buying a house"><img src="assets/icons/icon-home.svg" alt="" /><span>Buying a house</span></button>
+        <button class="moment-card" data-text="My partner and I are moving in together"><img src="assets/icons/icon-heart.svg" alt="" /><span>Moving in together</span></button>
+        <button class="moment-card" data-text="We're having a baby soon"><img src="assets/icons/icon-child.svg" alt="" /><span>Having a child</span></button>
+        <button class="moment-card" data-text="I'm going through a divorce"><img src="assets/icons/icon-document.svg" alt="" /><span>Divorce</span></button>
+        <button class="moment-card" data-text="I'm starting my own business"><img src="assets/icons/icon-briefcase.svg" alt="" /><span>Starting a business</span></button>
+        <button class="moment-card" data-text="I'm retiring soon"><img src="assets/icons/icon-sunset.svg" alt="" /><span>Retirement</span></button>
+        <button class="moment-card" data-text="I'd like help with buying a holiday home"><img src="assets/icons/icon-cottage.svg" alt="" /><span>Holiday home</span></button>
+        <button class="moment-card" data-text="I'd like help with buying a car"><img src="assets/icons/icon-car.svg" alt="" /><span>Buying a car</span></button>
+      </div>
+    </section>
+
+    <section class="offers-section">
+      <h2>We're here for you</h2>
+      <div class="offer-grid">
+        <button class="offer-card" data-text="I'd like help with buying a holiday home">
+          <img class="offer-card-art" src="assets/illustrations/illus-holiday-home.svg" alt="" />
+          <span class="offer-tag">Explore</span>
+          <h3>Dreaming of a holiday home?</h3>
+          <p>Ask Sara what buying a fritidshus involves, from financing to insuring it.</p>
         </button>
-        <button class="moment-card" data-text="My partner and I are moving in together">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M3 32L13 22L23 32M5 30V41H21V30M25 32L35 22L45 32M27 30V41H43V30M24 19C17 14 16 9 20 7C22 6 24 7 24 9C24 7 26 6 28 7C32 9 31 14 24 19Z" />
-            <path d="M11 41V35H15V41M33 41V35H37V41" />
-          </svg>
-          <span>Moving in together</span>
+        <button class="offer-card" data-text="Tell me about accident and health insurance">
+          <img class="offer-card-art" src="assets/illustrations/illus-travel-insurance.svg" alt="" />
+          <span class="offer-tag">Explore</span>
+          <h3>Heading abroad soon?</h3>
+          <p>Ask Sara about accident and health cover so you're protected while travelling.</p>
         </button>
-        <button class="moment-card" data-text="We're having a baby soon">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M10 24C10 14 20 9 28 12C36 14 38 20 38 24M8 24H40C40 33 34 37 26 37H22C14 37 8 33 8 24ZM38 20L44 14H46" />
-            <circle cx="16" cy="41" r="3.5" />
-            <circle cx="32" cy="41" r="3.5" />
-          </svg>
-          <span>Having a child</span>
-        </button>
-        <button class="moment-card" data-text="I'm going through a divorce">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M12 6H32L38 12V42H12ZM32 6V12H38M17 16H30M17 21H33M17 33C19 27 21 37 23 31C25 26 27 36 31 30M17 38H33" />
-          </svg>
-          <span>Divorce</span>
-        </button>
-        <button class="moment-card" data-text="I'm starting my own business">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <rect x="6" y="16" width="36" height="24" rx="3" />
-            <path d="M18 16V11H30V16M6 27H42M21 25V30H27V25" />
-          </svg>
-          <span>Starting a business</span>
-        </button>
-        <button class="moment-card" data-text="I'm retiring soon">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M6 36H42M15 36A9 9 0 0 1 33 36M24 20V15M12 24L9 21M36 24L39 21M7 30H4M41 30H44M6 42H14M20 42H28M34 42H42" />
-          </svg>
-          <span>Retirement</span>
-        </button>
-        <button class="moment-card" data-text="I'd like help with buying a holiday home">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M4 32L14 22L24 32M6 30V42H22V30M36 42C36 34 35 28 34 22M34 22C28 20 24 22 22 26M34 22C34 16 38 12 44 12M34 22C40 20 44 24 44 28M34 22C30 16 28 14 24 14M4 42H44" />
-          </svg>
-          <span>Holiday home</span>
-        </button>
-        <button class="moment-card" data-text="I'd like help with buying a car">
-          <svg class="moment-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path d="M7 29L11 20Q12 17 16 17H32Q36 17 37 20L41 29V36H7ZM12 28L14.5 21H33.5L36 28ZM11 36V40H16V36M32 36V40H37V36M20 32H28" />
-            <circle cx="13" cy="32" r="1.5" />
-            <circle cx="35" cy="32" r="1.5" />
-          </svg>
-          <span>Buying a car</span>
+        <button class="offer-card" data-text="I want to apply for a mortgage">
+          <img class="offer-card-art" src="assets/illustrations/illus-loan.svg" alt="" />
+          <span class="offer-tag">Explore</span>
+          <h3>Need extra borrowing power?</h3>
+          <p>Ask Sara about loans and mortgages, from a first home to consolidating debt.</p>
         </button>
       </div>
     </section>
 
-    <section id="bank" class="products">
-      <div class="product-col">
-        <h3>Bank</h3>
-        <ul>
-          <li>Bolån och finansiering</li>
-          <li>Betalningar och kort</li>
-          <li>Banktjänster</li>
-          <li>Räkna på lån och ränta</li>
-        </ul>
+    <section class="popular-section">
+      <h2><img class="popular-heading-icon" src="assets/icons/icon-target.svg" alt="" /> Popular</h2>
+      <div class="popular-grid">
+        <button class="popular-link" data-text="I want to apply for a mortgage">
+          <span class="popular-link-label"><img class="popular-link-icon" src="assets/icons/icon-mortgage.svg" alt="" />Borrow</span><span class="popular-link-arrow">→</span>
+        </button>
+        <button class="popular-link" data-text="Tell me about savings accounts">
+          <span class="popular-link-label"><img class="popular-link-icon" src="assets/icons/icon-savings.svg" alt="" />Save monthly</span><span class="popular-link-arrow">→</span>
+        </button>
+        <button class="popular-link" data-text="I want to move my pension">
+          <span class="popular-link-label"><img class="popular-link-icon" src="assets/icons/icon-pension.svg" alt="" />Move your pension</span><span class="popular-link-arrow">→</span>
+        </button>
+        <button class="popular-link" data-text="Can you compare car insurance levels, which one should I choose?">
+          <span class="popular-link-label"><img class="popular-link-icon" src="assets/icons/icon-car.svg" alt="" />Vehicle insurance</span><span class="popular-link-arrow">→</span>
+        </button>
+        <button class="popular-link" data-text="Tell me about life insurance and personal insurance">
+          <span class="popular-link-label"><img class="popular-link-icon" src="assets/icons/icon-accident-health.svg" alt="" />Personal insurance</span><span class="popular-link-arrow">→</span>
+        </button>
+        <a class="popular-link" href="https://www.lansforsakringar.se/bergslagen/privat/tips-guider/" target="_blank" rel="noopener">
+          <span class="popular-link-label"><img class="popular-link-icon" src="assets/icons/icon-guide.svg" alt="" />Tips &amp; guides</span><span class="popular-link-arrow">→</span>
+        </a>
       </div>
-      <div class="product-col" id="insurance">
-        <h3>Försäkringar</h3>
-        <ul>
-          <li>Hemförsäkring</li>
-          <li>Bilförsäkring</li>
-          <li>Livförsäkring</li>
-          <li>Barn- och familjeförsäkring</li>
-          <li>Olycksfalls- och sjukförsäkring</li>
-          <li>Bolåneskydd</li>
-        </ul>
-      </div>
-      <div class="product-col" id="pension">
-        <h3>Pension</h3>
-        <ul>
-          <li>Pensionsplanering</li>
-          <li>Sparkonton</li>
-          <li>Fond- och pensionsrådgivning</li>
-        </ul>
+    </section>
+
+    <section class="welcome-section">
+      <img class="welcome-art" src="assets/illustrations/illus-personal-loan.svg" alt="" />
+      <div class="welcome-copy">
+        <h2>Welcome to LF Bergslagen</h2>
+        <p>
+          LF Bergslagen is a local, member-owned company with everything under one roof —
+          insurance, bank, and pension. In this demo, Sara — our digital companion — is
+          always close at hand for fast help and personal guidance, day or night, with a
+          real advisor a message away when you need one.
+        </p>
       </div>
     </section>
 
     <section id="become-customer" class="cta-band">
       <div>
-        <h2>Ny kund hos LF Bergslagen?</h2>
-        <p>Fråga Sara vad det innebär att bli kund eller be en lokal rådgivare ringa upp dig.</p>
+        <h2>New to LF Bergslagen?</h2>
+        <p>Ask Sara what becoming a customer involves, or request a callback from a local advisor.</p>
       </div>
-      <button class="btn btn-primary cta-band-btn" type="button" data-text="I'd like to become a customer">💬 Ask
-        Sara</button>
+      <button class="btn btn-primary cta-band-btn" type="button" data-text="I'd like to become a customer">💬 Ask Sara</button>
+    </section>
+
+    <section class="quick-links-section">
+      <h2>Quick links</h2>
+      <div class="quick-links-grid">
+        <a href="#" class="quick-link">The app</a>
+        <a href="#" class="quick-link">My pages</a>
+        <a href="#" class="quick-link">BankID</a>
+      </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <span>© 2026 Länsförsäkringar Bergslagen</span>
-    <nav class="footer-links" aria-label="Footer">
-      <a href="#">Cookie-inställningar</a>
-      <a href="#">Personuppgiftspolicy</a>
-      <a href="#support" id="footer-chat-link">Kontakta oss</a>
-    </nav>
+    <div class="footer-illustration" aria-hidden="true">
+      <img src="assets/brand/brand-strip.svg" alt="" />
+    </div>
+
+    <div class="footer-top">
+      <div class="site-logo">
+        <img class="site-logo-mark" src="assets/brand/lf-bergslagen-logo.svg" alt="LF Bergslagen" />
+      </div>
+      <p class="footer-blurb">Local, member-focused financial services — now with a digital companion to help you through life's transitions.</p>
+    </div>
+
+    <div class="footer-cols">
+      <div>
+        <strong>Insurance</strong>
+        <button class="footer-link" data-text="Tell me about home insurance">Home insurance</button>
+        <button class="footer-link" data-text="Can you compare car insurance levels, which one should I choose?">Car insurance</button>
+        <button class="footer-link" data-text="Tell me about accident and health insurance">Accident &amp; health</button>
+        <button class="footer-link" data-text="Tell me about child insurance">Child insurance</button>
+      </div>
+      <div>
+        <strong>Loans</strong>
+        <button class="footer-link" data-text="I want to apply for a mortgage">Mortgage</button>
+        <button class="footer-link" data-text="What loan and mortgage options do you offer?">All loan services</button>
+      </div>
+      <div>
+        <strong>Save &amp; invest</strong>
+        <button class="footer-link" data-text="Tell me about savings accounts">Savings accounts</button>
+        <button class="footer-link" data-text="Tell me about pension and retirement savings">Pension</button>
+      </div>
+      <div>
+        <strong>Account &amp; cards</strong>
+        <button class="footer-link" data-text="I'd like to become a customer">Become a customer</button>
+      </div>
+      <div>
+        <strong>About us</strong>
+        <a href="#">About LF Bergslagen</a>
+        <a href="#">Careers</a>
+        <a href="#">Sustainability</a>
+      </div>
+      <div>
+        <strong>Customer service</strong>
+        <a href="#" id="footer-chat-link">Chat with Sara</a>
+        <a href="#">Find an office</a>
+        <a href="/dashboard.html">Advisor dashboard</a>
+      </div>
+      <div>
+        <strong>Other</strong>
+        <a href="https://www.lansforsakringar.se/bergslagen/privat/tips-guider/" target="_blank" rel="noopener">Tips &amp; guides</a>
+        <button class="footer-link" data-text="I want to report a claim">Report a claim</button>
+      </div>
+      <div>
+        <strong>Feedback</strong>
+        <a href="#">Give feedback</a>
+      </div>
+    </div>
+
+    <p class="footer-disclaimer">
+      This is a demo prototype built for an AI-agent hackathon, styled to resemble
+      Länsförsäkringar Bergslagen's real website layout and branding for demonstration
+      purposes only — it is not the official Länsförsäkringar Bergslagen website, and no
+      content here (offers, news, pricing) is real.
+    </p>
   </footer>
 
   <div id="chat-widget" class="chat-widget" hidden>
     <div class="chat-widget-header">
-      <span>Sara · AI assistant</span>
+      <span>Sara · Digital Companion</span>
       <div class="chat-widget-header-actions">
         <button id="chat-widget-maximize" type="button" title="Expand" aria-label="Expand chat">⤢</button>
         <button id="chat-widget-fullscreen" type="button" title="Full screen" aria-label="Full screen chat">⛶</button>
@@ -388,9 +261,10 @@
     </div>
     <iframe id="chat-widget-frame" class="chat-widget-frame" title="Chat with Sara" src="about:blank"></iframe>
   </div>
-  <button id="chat-widget-fab" class="chat-widget-fab" type="button" aria-label="Open chat">💬</button>
+  <button id="chat-widget-fab" class="chat-widget-fab" type="button" aria-label="Open chat">
+    <img src="assets/brand/chatbot-icon.png" alt="" />
+  </button>
 
   <script src="site.js"></script>
 </body>
-
 </html>

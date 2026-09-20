@@ -1,24 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Life Transition Navigator</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
   <header class="topbar">
     <div class="topbar-left">
-      <button id="sidebar-show-btn" class="sidebar-toggle-btn topbar-sidebar-toggle" type="button"
-        title="Show previous chats" hidden>☰</button>
+      <button id="sidebar-show-btn" class="sidebar-toggle-btn topbar-sidebar-toggle" type="button" title="Show previous chats" hidden>☰</button>
       <div class="brand" id="home-btn" role="button" tabindex="0" title="Start a new chat">
-        <img class="brand-logo" src="lf-logo.png" alt="LF Bergslagen" />
-        <span class="avatar avatar-ai"><img src="chatbot-icon.png" alt="Sara AI assistant icon" /></span>
+        <span class="avatar avatar-ai"><img src="assets/brand/lf-mark.svg" alt="LF Bergslagen" /></span>
         <div class="brand-text">
-          <span class="brand-name">Sara</span>
-          <span class="brand-sub">Digital assistant · LF Bergslagen</span>
+          <span class="brand-sub">LF Bergslagen</span>
         </div>
       </div>
     </div>
@@ -27,7 +22,15 @@
         <button class="lang-btn" data-lang="en" type="button">EN</button>
         <button class="lang-btn" data-lang="sv" type="button">SV</button>
       </div>
-      <button id="human-btn" class="human-btn" type="button">Talk to a person</button>
+      <button id="human-btn" class="human-btn" type="button">
+        <svg class="human-btn-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4,13 V11 a8,8 0 0 1 16,0 v2"></path>
+          <rect x="2" y="13" width="4" height="6" rx="1.5"></rect>
+          <rect x="18" y="13" width="4" height="6" rx="1.5"></rect>
+          <path d="M20,19 v1 a3,3 0 0 1 -3,3 h-3"></path>
+        </svg>
+        <span id="human-btn-label">Contact us</span>
+      </button>
     </div>
   </header>
 
@@ -37,24 +40,55 @@
         <button id="new-chat-btn" class="new-chat-btn" type="button">+ New chat</button>
         <button id="sidebar-hide-btn" class="sidebar-toggle-btn" type="button" title="Hide previous chats">‹</button>
       </div>
-      <div id="chat-list" class="chat-list"></div>
+      <div id="chats-section" class="chats-section">
+        <div class="chats-section-header">
+          <h2 id="chat-list-heading" class="chat-list-heading">Chats</h2>
+          <button id="chats-toggle-btn" class="plan-panel-toggle-btn" type="button" title="Minimize">−</button>
+        </div>
+        <div id="chats-section-body" class="chats-section-body">
+          <div class="chat-search">
+            <input id="chat-search-input" type="text" placeholder="Search previous chats..." autocomplete="off" />
+          </div>
+          <div id="chat-list" class="chat-list"></div>
+        </div>
+      </div>
+      <section id="plan-panel" class="plan-panel" aria-live="polite"></section>
+
+      <div id="portfolio-panel" class="portfolio-panel" hidden>
+        <div class="portfolio-header">
+          <span class="portfolio-title" id="portfolio-title">Your activity</span>
+          <button id="portfolio-toggle-btn" class="plan-panel-toggle-btn" type="button" title="Minimize">−</button>
+        </div>
+        <div id="portfolio-items" class="portfolio-items"></div>
+      </div>
     </aside>
 
     <main class="chat-shell">
+      <div id="progress-ring-bar" class="progress-ring-bar" hidden>
+        <div class="progress-ring">
+          <svg viewBox="0 0 64 64" class="progress-ring-svg">
+            <circle class="progress-ring-track" cx="32" cy="32" r="28"></circle>
+            <circle id="progress-ring-fill" class="progress-ring-fill" cx="32" cy="32" r="28"></circle>
+          </svg>
+          <span id="progress-ring-percent" class="progress-ring-percent">0%</span>
+        </div>
+        <div class="progress-ring-info">
+          <span id="progress-ring-title" class="progress-ring-title"></span>
+          <div id="progress-steps" class="progress-steps"></div>
+        </div>
+      </div>
+
       <div id="messages" class="messages">
         <div class="msg assistant">
-          <span class="msg-label" id="greeting-label">Sara · AI assistant</span>
-          <p id="greeting-text">Hej! I'm Sara, LF Bergslagen's digital assistant. Tell me what's changing in your life,
-            and I'll help you think it through.</p>
+          <span class="msg-label" id="greeting-label">Sara · Digital Companion</span>
+          <p id="greeting-text">Hej! I'm Sara, LF Bergslagen's digital companion. Tell me what's changing in your life, and I'll help you think it through.</p>
         </div>
       </div>
 
       <div id="chips" class="chips"></div>
 
       <div id="attachment-preview" class="attachment-preview" hidden></div>
-      <button id="fill-form-btn" class="fill-form-btn" type="button" hidden disabled>
-        Fill Form
-      </button>
+      <button id="fill-form-btn" class="fill-form-btn" type="button" hidden disabled>Fill Form</button>
 
       <div id="rating-bar" class="rating-bar" hidden>
         <span class="rating-label" id="rating-label"></span>
@@ -63,10 +97,26 @@
 
       <form id="chat-form" class="composer">
         <input id="file-input" type="file" accept=".pdf,.txt,.doc,.docx,.xls,.xlsx,image/*" multiple hidden />
-        <button id="attach-btn" class="icon-btn" type="button" title="Attach a document">📎</button>
-        <button id="mic-btn" class="icon-btn" type="button" title="Speak instead of typing" hidden>🎤</button>
-        <textarea id="chat-input" rows="1" placeholder="Tell me what's happening in your life..."
-          autocomplete="off"></textarea>
+        <button id="attach-btn" class="icon-btn" type="button" title="Attach a document">
+          <svg viewBox="0 0 100 100" width="18" height="18" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="50" cy="50" r="45.5"></circle>
+              <path d="M62.5 44.5 44.8 62.2a8.7 8.7 0 0 1-12.3-12.3l20.6-20.6a14.2 14.2 0 0 1 20.1 20.1L51.5 70.2a19.8 19.8 0 0 1-28-28"></path>
+            </g>
+          </svg>
+        </button>
+        <button id="mic-btn" class="icon-btn" type="button" title="Speak instead of typing" hidden>
+          <svg viewBox="0 0 100 100" width="18" height="18" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="50" cy="50" r="45.5"></circle>
+              <rect x="41.4" y="24" width="17.2" height="31" rx="8.6"></rect>
+              <path d="M33.5 47.5v4a16.5 16.5 0 0 0 33 0v-4"></path>
+              <path d="M50 68v9"></path>
+              <path d="M41 77h18"></path>
+            </g>
+          </svg>
+        </button>
+        <textarea id="chat-input" rows="1" placeholder="Tell me what's happening in your life..." autocomplete="off"></textarea>
         <button id="send-btn" type="submit">Send</button>
       </form>
     </main>
@@ -74,5 +124,4 @@
 
   <script src="app.js"></script>
 </body>
-
 </html>

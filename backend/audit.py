@@ -107,6 +107,16 @@ def read_events(customer_id: str | None = None) -> list[dict]:
     return events
 
 
+def read_recent_events(limit: int = 50) -> list[dict]:
+    """Most recent audit events across every customer, newest first - the
+    concise "Audit History" feed the AI Hub dashboard shows managers/
+    auditors (as opposed to /api/audit/{customer_id}, which is the full,
+    single-customer decision trail linked from a CS Workspace case)."""
+    events = read_events()
+    events.sort(key=lambda e: e.get("ts", ""), reverse=True)
+    return events[:limit]
+
+
 def verify_chain() -> dict:
     """Recomputes every entry's hash and checks the prev_hash links.
     Returns {"valid": bool, "entries": int, "broken_at": audit_id | None}."""

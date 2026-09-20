@@ -129,6 +129,7 @@ public class CaseController {
                     requireCaseAccess(role, c);
                     c.setAssignedAgent(request.getAgent());
                     c.setStatus(CaseStatus.IN_PROGRESS);
+                    caseStore.save(c);
                     return ResponseEntity.ok(c);
                 })
                 .orElseGet(() -> ResponseEntity.notFound().build());
@@ -145,6 +146,7 @@ public class CaseController {
                 .map(c -> {
                     requireCaseAccess(role, c);
                     c.setStatus(request.getStatus());
+                    caseStore.save(c);
                     return ResponseEntity.ok(c);
                 })
                 .orElseGet(() -> ResponseEntity.notFound().build());
@@ -175,6 +177,7 @@ public class CaseController {
                     }
                     c.setAssignedAgent(request.getAgent());
                     c.setStatus(CaseStatus.SUBMITTED);
+                    caseStore.save(c);
                     return ResponseEntity.ok(c);
                 })
                 .orElseGet(() -> ResponseEntity.notFound().build());
@@ -207,6 +210,7 @@ public class CaseController {
 
         reviewCase.setStatus(CaseStatus.RESOLVED);
         reviewCase.setAssignedAgent(request.getAgent());
+        caseStore.save(reviewCase);
 
         Case opsCase = caseStore.create(
                 CaseType.MORTGAGE_OPERATIONS,
@@ -221,5 +225,84 @@ public class CaseController {
     }
 
     public record ApproveToOperationsResult(Case reviewCase, Case operationsCase) {
+    }
+
+    /**
+     * Narrow, unauthenticated read for the AI assistant (Python backend) to
+     * show a customer their OWN case status - e.g. in a chat reply, or the
+     * chat's interaction-history panel. Not role-gated, same exception as
+     * POST /api/cases (create): the caller is the AI backend, not a human
+     * agent, so X-CS-Role doesn't apply here.
+     *
+     * Deliberately returns only a few fields, never assignedAgent or the
+     * staff-facing extra notes, and requires customerId to match exactly -
+     * a wrong or guessed customerId gets 404, the same as a case that
+     * doesn't exist at all, so this can't be used to enumerate other
+     * customers' case IDs or confirm one exists by trying different ids.
+     */
+    @GetMapping("/{id}/customer-view")
+    public ResponseEntity<CustomerCaseView> customerView(
+            @PathVariable String id,
+            @RequestParam String customerId
+    ) {
+        return caseStore.get(id)
+                .filter(c -> customerId.equals(c.getCustomerId()))
+                .map(c -> ResponseEntity.ok(new CustomerCaseView(
+                        c.getId(), c.getType(), c.getStatus(), c.getCreatedAt(), c.getUpdatedAt()
+                )))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    public record CustomerCaseView(
+            String id,
+            CaseType type,
+            CaseStatus status,
+            java.time.Instant createdAt,
+            java.time.Instant updatedAt
+    ) {
+    }
+
+    /**
+     * Case status lookup for the AI assistant's "what's happening with my
+     * case CASE-123456" chat flow (see get_case_status in the Python
+     * backend's tools.py) - unauthenticated, same exception as POST
+     * /api/cases (create): the caller is the AI backend, not a human agent,
+     * so X-CS-Role doesn't apply.
+     *
+     * Unlike /customer-view above, this is deliberately NOT scoped to a
+     * customerId - that flow was designed to work from the case ID alone,
+     * like a tracking number, with no identity check (see agent.py's CASE
+     * STATUS FLOW), so there's no customerId available to check against
+     * here. Returns description/assignedAgent/extra too, since the
+     * existing chat reply already surfaces those (e.g. "nextStep: Awaiting
+     * property valuation report") - but never customerName or customerId,
+     * so this can't be used to learn whose case CASE-123456 is.
+     *
+     * Demo-scope caveat, same as /api/metrics/summary and /api/audit/*:
+     * a case ID is a random 6-digit number, not a secret - an anonymous
+     * caller who guesses one can read this case's status. A production
+     * version would gate this behind the same identity verification the
+     * portfolio/fraud flows already require.
+     */
+    @GetMapping("/{id}/assistant-view")
+    public ResponseEntity<AssistantCaseView> assistantView(@PathVariable String id) {
+        return caseStore.get(id)
+                .map(c -> ResponseEntity.ok(new AssistantCaseView(
+                        c.getId(), c.getType(), c.getStatus(), c.getDescription(),
+                        c.getAssignedAgent(), c.getExtra(), c.getCreatedAt(), c.getUpdatedAt()
+                )))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    public record AssistantCaseView(
+            String id,
+            CaseType type,
+            CaseStatus status,
+            String description,
+            String assignedAgent,
+            java.util.Map<String, String> extra,
+            java.time.Instant createdAt,
+            java.time.Instant updatedAt
+    ) {
     }
 }

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#eaf1f8"/>
+  <path d="M160 28 L212 46 L212 92 C212 122 188 142 160 152 C132 142 108 122 108 92 L108 46 Z" fill="#0d3b66"/>
+  <path d="M140 96 L154 110 L182 78" stroke="#ffffff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="0" y="150" width="320" height="30" fill="#0d3b66"/>
+  <text x="160" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="700">Loan Protection</text>
+</svg>

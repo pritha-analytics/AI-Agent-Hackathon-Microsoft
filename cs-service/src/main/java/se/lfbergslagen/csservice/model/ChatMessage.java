@@ -1,8 +1,14 @@
 package se.lfbergslagen.csservice.model;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+
+@Embeddable
 public class ChatMessage {
 
     private String role;
+
+    @Column(length = 4000)
     private String content;
 
     public ChatMessage() {

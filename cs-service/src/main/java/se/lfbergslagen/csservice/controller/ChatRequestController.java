@@ -105,6 +105,7 @@ public class ChatRequestController {
                 .map(r -> {
                     r.setAssignedAgent(request.getAgent());
                     r.setStatus(ChatRequestStatus.IN_PROGRESS);
+                    store.save(r);
                     notifyPythonAppOfAssignedAgent(sessionId, request.getAgent());
                     return ResponseEntity.ok(r);
                 })
@@ -143,6 +144,7 @@ public class ChatRequestController {
         if (chatRequest.getStatus() != ChatRequestStatus.CLOSED) {
             chatRequest.setStatus(ChatRequestStatus.IN_PROGRESS);
         }
+        store.save(chatRequest);
         notifyPythonAppOfAssignedAgent(sessionId, request.getAgent());
         return ResponseEntity.ok(chatRequest);
     }
@@ -169,6 +171,7 @@ public class ChatRequestController {
         return store.get(sessionId)
                 .map(r -> {
                     r.setStatus(ChatRequestStatus.CLOSED);
+                    store.save(r);
                     return ResponseEntity.ok(r);
                 })
                 .orElseGet(() -> ResponseEntity.notFound().build());

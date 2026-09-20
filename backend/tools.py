@@ -1,3 +1,4 @@
+import copy
 import json
 import re
 import unicodedata
@@ -7,8 +8,8 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-from . import cs_client
-from .knowledge import BOOLI_URL, LF_PAGES, MOCK_CUSTOMERS, SERVICE_PROVIDERS
+from . import cs_client, verified_customer
+from .knowledge import BOOLI_URL, HEMNET_URL, HOME_INSURANCE_TIERS, LF_PAGES, MOCK_CUSTOMERS, SERVICE_PROVIDERS
 
 # Towns LF Bergslagen actually serves (same list SERVICE_PROVIDERS uses for
 # its local claim partners) - reused here so home-search guidance can tell a
@@ -28,6 +29,11 @@ MAX_CHARS = 6000
 MAX_LINKS = 6
 TIMEOUT_SECONDS = 10
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
+
+# Field name -> (display label, aliases the extractor should recognize in
+# uploaded document text, Swedish and English) - used by fill_customer_form
+# below to populate a customer form from free-text document content without
+# needing a rigid, pre-agreed document format.
 DEFAULT_CUSTOMER_FORM_FIELDS = (
     ("full_name", "Full name", ("Full name", "Namn", "Fullständigt namn", "full_name", "namn")),
     ("personnummer", "Personal ID number", ("Personnummer", "Personal ID number", "Personal number", "SSN", "personnummer")),
@@ -354,46 +360,207 @@ def fill_customer_form(extracted_text: str, form_template: dict | None = None) -
     return json.dumps({**template, "fields": populated_fields}, ensure_ascii=False)
 
 
-def render_emergency_fund_gauge(current_sek: float, monthly_expenses_sek: float) -> str:
-    """Return gauge JSON for emergency savings and financial-readiness questions.
+def submit_insurance_application(history: list[dict], product: str) -> str:
+    """The FORM FILLING flow's actual submission step - called once the
+    customer confirms a form fill_customer_form produced. Creates a REAL
+    cs-service case (visible in the CS Workspace queue, assignable to an
+    advisor) instead of the flow's old behaviour of just narrating "a case
+    officer will review this" with nothing behind it. Uses CaseType.OTHER
+    (cs-service's Java enum has no dedicated type per insurance product -
+    see CaseType.java - so this is the closest real, queueable type rather
+    than inventing one the Java service would reject) with the product name
+    and every filled field recorded in the case's own description/extra, so
+    an advisor opening it sees exactly what was applied for.
 
-    Use this for emergency-savings or financial-cushion questions, including
-    scenarios such as "what if I lose my job" or similar readiness concerns.
-    """
-    target_sek = monthly_expenses_sek * 3 if monthly_expenses_sek else 75000
-    percent = round(min(100, (current_sek / target_sek) * 100))
+    Takes the conversation history, not a form_json argument the model would
+    have to retype from memory (unreliable - an earlier version asked the
+    LLM to pass back fill_customer_form's exact JSON and it routinely came
+    back empty/mangled). Instead this re-derives the fields deterministically
+    by re-running fill_customer_form's own text parsing against the most
+    recent assistant message that displayed the filled form - the same
+    "Label: value" lines it always renders in, so parsing it back is exactly
+    as reliable as parsing an uploaded document was.
 
-    if percent < 50:
-        status = "critical"
-        message = (
-            f"Du har {percent}% av rekommenderad buffert — det är en bra idé att "
-            "bygga upp mer innan stora utgifter."
-        )
-    elif percent < 80:
-        status = "warning"
-        message = (
-            f"Du har {percent}% av rekommenderad buffert — du är på god väg, "
-            "men det finns utrymme att förbättra."
-        )
-    else:
-        status = "healthy"
-        message = (
-            f"Du har {percent}% av rekommenderad buffert — en trygg situation "
-            "för oväntade utgifter."
-        )
-
-    return json.dumps(
-        {
-            "type": "emergency_fund_gauge",
-            "title": "Emergency Fund Coverage",
-            "current_sek": current_sek,
-            "target_sek": target_sek,
-            "percent": percent,
-            "status": status,
-            "message": message,
-        },
-        ensure_ascii=False,
+    Returns the real case ID - the caller should state it verbatim in its
+    reply so it round-trips through CASE_ID_RE in main.py, the same way
+    every other case-creating flow in this app is picked up."""
+    last_form_text = next(
+        (m.get("content", "") for m in reversed(history) if m.get("role") == "assistant"), ""
     )
+    try:
+        fields = json.loads(fill_customer_form(last_form_text)).get("fields", [])
+    except (json.JSONDecodeError, TypeError):
+        fields = []
+    values = {f.get("name", ""): f.get("value", "") for f in fields if f.get("value")}
+    full_name = values.get("full_name") or values.get("name") or "Unknown"
+
+    reason = f"{product} application submitted by customer via chat. " + "; ".join(
+        f"{f.get('label', f.get('name', ''))}: {f.get('value', '')}" for f in fields if f.get("value")
+    )
+    case_id, status = cs_client.create_case_with_fallback(
+        "other", full_name, None, reason, {"product": product, **values},
+    )
+    return f"Case created: {case_id} (status: {status})"
+
+
+# Real, live comparison table on LF's car insurance page (Helförsäkring /
+# Halvförsäkring / Trafikförsäkring, feature by feature) - separate from
+# fetch_lf_page above because that function flattens all page text, which
+# would turn this table into an unreadable jumble. Parses the actual
+# <table> markup instead, targeting the specific structure LF's page uses
+# (confirmed by inspecting the live HTML): each feature row's short name
+# lives in a <button aria-label="..."> (the cell's own text mixes it with
+# a long description), and each tier cell's text ends in "ingår" (included)
+# or "ingår inte" (not included). If LF changes this structure, parsing
+# quietly finds nothing/mismatches and this returns None - the caller falls
+# back to fetch_lf_page's plain text rather than show a broken table.
+CAR_INSURANCE_TABLE_CACHE_KEY = "car_insurance_table"
+
+
+def _parse_car_insurance_table(html: str) -> dict | None:
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table")
+    if not table:
+        return None
+
+    trs = table.find_all("tr")
+    if not trs:
+        return None
+
+    header_cells = trs[0].find_all("th")[2:]  # first two are the feature-name/spacer columns
+    columns = [
+        span.get_text(strip=True)
+        for th in header_cells
+        for span in th.select("span.d-none.d-md-block")
+    ]
+    if not columns:
+        return None
+
+    rows = []
+    for tr in trs[1:]:
+        if tr.get("aria-hidden") == "true":
+            continue  # the hidden accordion-detail row that follows each feature row
+        classes = tr.get("class") or []
+        if not any(c.startswith("table-block-row") for c in classes):
+            continue
+        button = tr.find("button")
+        if not button or not button.get("aria-label"):
+            continue
+        feature = button["aria-label"].strip()
+        value_cells = [
+            td for td in tr.find_all("td")
+            if "table-block-cell-first" not in (td.get("class") or [])
+            and "table-block-cell-margin" not in (td.get("class") or [])
+        ]
+        if len(value_cells) != len(columns):
+            continue  # structure didn't match what we expected - skip rather than guess
+        values = [not td.get_text(strip=True).lower().endswith("inte") for td in value_cells]
+        rows.append({"feature": feature, "values": values})
+
+    if not rows:
+        return None
+    return {"columns": columns, "rows": rows}
+
+
+def fetch_car_insurance_comparison() -> dict | None:
+    """Live-fetch and parse LF Bergslagen's real car insurance comparison
+    table. Returns None (never a guessed/partial table) if the live fetch
+    is blocked and there's no cached copy, or if the page structure no
+    longer matches what this parser expects."""
+    url = LF_PAGES["car_insurance"]
+    _ensure_primed()
+
+    try:
+        response = _session.get(url, timeout=TIMEOUT_SECONDS)
+        response.raise_for_status()
+        response.encoding = response.apparent_encoding
+        if _looks_blocked(response.text):
+            raise requests.RequestException("blocked by anti-bot page")
+        parsed = _parse_car_insurance_table(response.text)
+        if parsed is None:
+            raise ValueError("comparison table structure not found on page")
+    except (requests.RequestException, ValueError):
+        cached = _read_cache(CAR_INSURANCE_TABLE_CACHE_KEY)
+        if not cached:
+            return None
+        try:
+            return json.loads(cached)
+        except json.JSONDecodeError:
+            return None
+
+    _write_cache(CAR_INSURANCE_TABLE_CACHE_KEY, json.dumps(parsed, ensure_ascii=False))
+    return parsed
+
+
+# Signals used to personalize the home insurance tier recommendation below -
+# same AND/OR keyword-matching style as the category/stage detectors in
+# agent.py, kept deterministic (no LLM guessing at the customer's situation).
+CONDO_KEYWORDS = [
+    "condo", "condominium", "apartment", "bostadsrätt", "bostadsratt",
+    "lägenhet", "lagenhet",
+]
+REMOTE_WORK_KEYWORDS = [
+    "work from home", "work remotely", "remote work", "working remotely",
+    "hemmakontor", "distansarbete", "jobbar hemifrån",
+]
+FREQUENT_TRAVEL_KEYWORDS = [
+    "travel a lot", "travel frequently", "frequent traveler", "travel internationally",
+    "international travel", "travel often",
+    "reser mycket", "reser ofta", "reser utomlands",
+]
+
+
+def compare_home_insurance(history: list[dict]) -> dict:
+    """Return LF Bergslagen's home insurance tier comparison (Bas/Mellan/
+    Stor - see HOME_INSURANCE_TIERS) plus a personalized "could be a good
+    fit" pointer (never a directive recommendation - choosing a tier is the
+    customer's own decision, or an LF Bergslagen advisor's to help with)
+    when the conversation gives enough signal (buying a condo, working
+    remotely, frequent international travel). Deterministic Python, not an
+    LLM guess - mirrors the rest of this codebase's rule that any decision
+    that actually matters is computed in code, with the LLM only narrating
+    around it. No pointer is given (recommended_column stays None) when
+    none of the signals are present, rather than defaulting to a tier that
+    doesn't reflect this customer."""
+    combined = " ".join(m.get("content", "") for m in history if m.get("role") == "user").lower()
+    is_condo = any(kw in combined for kw in CONDO_KEYWORDS)
+    remote_worker = any(kw in combined for kw in REMOTE_WORK_KEYWORDS)
+    frequent_traveler = any(kw in combined for kw in FREQUENT_TRAVEL_KEYWORDS)
+
+    recommended_column = None
+    recommendation_note = None
+
+    if frequent_traveler:
+        recommended_column = 2
+        recommendation_note = (
+            "Since you travel internationally often, Stor could be a good fit for the extended "
+            "45-day travel cover, on top of full property and belongings protection - though it's "
+            "worth comparing all three yourself, or asking an LF Bergslagen advisor, before deciding."
+        )
+    elif is_condo or remote_worker:
+        recommended_column = 1
+        reasons = []
+        if is_condo:
+            reasons.append("you're buying a condo (bostadsrätt)")
+        if remote_worker:
+            reasons.append("you work remotely, often on a personal laptop")
+        extras = []
+        if remote_worker:
+            extras.append("the Allrisk protection (covers accidents like a coffee spill on your laptop)")
+        if is_condo:
+            extras.append("the Bostadsrättstillägg add-on")
+        recommendation_note = (
+            f"Since {' and '.join(reasons)}, Mellan could be a good fit for "
+            f"{' plus '.join(extras)} - Stor is probably more than you need unless you also travel "
+            "internationally multiple times a year, but it's your call, or an LF Bergslagen advisor "
+            "can help you weigh it."
+        )
+
+    table = copy.deepcopy(HOME_INSURANCE_TIERS)
+    table["type"] = "home_insurance_tiers"
+    table["recommended_column"] = recommended_column
+    table["recommendation_note"] = recommendation_note
+    return table
 
 
 def find_service_provider(category: str, location: str) -> str:
@@ -437,14 +604,16 @@ def _in_lf_bergslagen_area(location: str) -> bool:
     return any(_fold(town) in location_norm or location_norm in _fold(town) for town in LF_BERGSLAGEN_TOWNS)
 
 
-def find_home_search_link(location: str, property_type: str = "", price_range: str = "") -> str:
-    """Point the customer at Booli.se - Sweden's largest home-search site -
-    for actual apartment/villa listings. Booli.se's live search results can't
-    be fetched into this chat (they block automated requests), so this never
-    invents specific listings or a guessed deep link - only the site's real,
-    verified homepage URL, plus plain instructions for what to search/filter
-    for there. Also reports whether the location falls inside LF Bergslagen's
-    own service area, so the agent can be straight about insurance."""
+def find_home_search_link(location: str = "", property_type: str = "", price_range: str = "") -> str:
+    """Point the customer at Booli.se and Hemnet.se - Sweden's two largest
+    home-search sites - for actual apartment/villa listings. Neither site's
+    live search results can be fetched into this chat (they block automated
+    requests), so this never invents specific listings or a guessed deep
+    link - only each site's real, verified homepage URL, plus plain
+    instructions for what to search/filter for there. Also reports whether
+    the location falls inside LF Bergslagen's own service area, so the agent
+    can be straight about insurance. Location is optional - callable with
+    none yet, to make an early, general mention of both sites."""
     location = (location or "").strip()
     filters = []
     if property_type:
@@ -468,10 +637,11 @@ def find_home_search_link(location: str, property_type: str = "", price_range: s
         area_note = "Once you know the town, I can say whether LF Bergslagen's own home insurance applies there."
 
     return (
-        f"Booli.se ({BOOLI_URL}) is Sweden's largest home-search site, covering apartments, "
-        f"villas, and more all across the country.{location_clause} Live listing data can't be "
-        "pulled directly into this chat (booli.se blocks automated access), so Booli's own site "
-        "is the real place to see what's actually on the market right now.\n"
+        f"Booli.se ({BOOLI_URL}) and Hemnet.se ({HEMNET_URL}) are Sweden's two largest "
+        f"home-search sites, covering apartments, villas, and more all across the "
+        f"country.{location_clause} Live listing data can't be pulled directly into this chat "
+        "(both sites block automated access), so their own sites are the real place to see "
+        "what's actually on the market right now.\n"
         f"{area_note}"
     )
 
@@ -500,6 +670,7 @@ def verify_customer_identity(name: str, personnummer: str, dob: str) -> str:
             dob_digits == record_dob_digits or record_pnr_digits.startswith(dob_digits)
         )
         if name_matches and pnr_matches and dob_matches:
+            verified_customer.mark_verified(customer["customer_id"])
             return f"VERIFIED\ncustomer_id: {customer['customer_id']}\nname: {customer['name']}"
 
     return (
@@ -509,13 +680,43 @@ def verify_customer_identity(name: str, personnummer: str, dob: str) -> str:
     )
 
 
+def verify_customer_by_personnummer(personnummer: str) -> dict | None:
+    """BankID-style verification: unlike verify_customer_identity, this only
+    needs the personnummer - a real BankID login already knows the signer's
+    name and date of birth, so there's nothing else to ask for. Demo data
+    only - looks up the mock customer directory, same as above."""
+    pnr_digits = _digits_only(personnummer)
+    if not pnr_digits:
+        return None
+    for customer in MOCK_CUSTOMERS:
+        if pnr_digits == _digits_only(customer["personnummer"]):
+            verified_customer.mark_verified(customer["customer_id"])
+            return customer
+    return None
+
+
 def get_customer_portfolio(customer_id: str) -> str:
-    """List a verified customer's current LF Bergslagen products."""
+    """List a verified customer's current LF Bergslagen products, with
+    each product's size, specific plan/fund name, and other useful details
+    (a mortgage's rate/tenure/maturity, a policy's renewal date, etc.) -
+    see knowledge.MOCK_CUSTOMERS for the structured data this reads."""
     customer = _find_customer(customer_id)
     if not customer:
         return f"Unknown customer_id '{customer_id}'."
-    lines = "\n".join(f"- {p}" for p in customer["portfolio"])
-    return f"Current products for {customer['name']}:\n{lines}"
+
+    lines = []
+    for product in customer["portfolio"]:
+        header = product["name"]
+        if product.get("product_type"):
+            header += f" — {product['product_type']}"
+        if product.get("size"):
+            header += f" ({product['size']})"
+        lines.append(f"- {header}")
+        for key, value in (product.get("details") or {}).items():
+            label = key.replace("_", " ").capitalize()
+            lines.append(f"    {label}: {value}")
+
+    return f"Current products for {customer['name']}:\n" + "\n".join(lines)
 
 
 def request_callback(name: str, phone: str, preferred_time: str = "") -> str:

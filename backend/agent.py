@@ -8,6 +8,10 @@ from .agents.fraud_dispute_agent import (
     wants_fraud_or_dispute,
 )
 from .agents.mortgage_agent import (
+    AUTH_CHOICE_FORM,
+    AUTH_CHOICE_SUGGESTIONS,
+    BANKID_DEMO_PERSONNUMMER,
+    compute_transition_progress,
     loan_offer_flow_resolved,
     loan_promise_flow_resolved,
     run_loan_offer_agent,
@@ -15,11 +19,15 @@ from .agents.mortgage_agent import (
     wants_loan_offer_application,
     wants_loan_promise_application,
 )
+from .agents.mortgage_agent import _bankid_chosen as bankid_chosen
 from .knowledge import LF_PAGES, SERVICE_PROVIDERS
 from .link_safety import URL_RE, strip_unverified_links as _strip_unverified_links
 from .llm_client import client
 from .suggestions import generate_suggestions
+from .text_utils import has_attachment, strip_attachments
 from .tools import (
+    compare_home_insurance,
+    fetch_car_insurance_comparison,
     fetch_lf_page,
     fill_customer_form,
     find_home_search_link,
@@ -27,10 +35,12 @@ from .tools import (
     get_case_status,
     get_customer_portfolio,
     request_callback,
+    submit_insurance_application,
+    verify_customer_by_personnummer,
     verify_customer_identity,
 )
 
-MAX_TOOL_ROUNDS = 4
+MAX_TOOL_ROUNDS = 6
 
 SYSTEM_PROMPT = f"""LANGUAGE RULE: always reply entirely in the same language as the
 user's MOST RECENT message, no exceptions. Determine the reply language only from what
@@ -61,7 +71,7 @@ försäkringen som stressar dig mest just nu, låt oss börja där."
 Before sending your reply, check sentence 1 against both rules above and rewrite it if
 it fails either one.
 
-You are Sara, a digital assistant that helps people think through major life events —
+You are Sara, a digital companion that helps people think through major life events —
 buying a house, moving in together, having a child, divorce, starting a business,
 retirement, buying a holiday home, buying a car, and similar transitions. You are provided by LF
 Bergslagen (Länsförsäkringar Bergslagen) and use their real, live product data as your
@@ -114,31 +124,32 @@ After the first filled form has been shown, follow these rules before calling
 fill_customer_form again:
 1. If the user confirms the details with words such as "yes", "correct", "looks
 good", "submit", "tack", "det stämmer", or a similar confirmation, do not
-re-display the form and do not ask for confirmation again. Reply in the user's
-current language with a short confirmation that the form is filled and ready for
-review, but do not claim that it has been sent to LF or saved anywhere — nothing is
-persisted in the backend yet. Explain the next steps in short, numbered form, and
-ask whether they have more questions or want to add products such as life
-insurance or condominium add-on coverage. Use this structure, adapting the
-product/insurance type when it is known:
+re-display the form and do not ask for confirmation again. Instead call
+submit_insurance_application with the product name - this actually creates a case
+a real advisor will see, so never skip it and never claim the application is
+"ready for review" without having called it: that would be a promise nothing
+behind it. Once it returns a case ID, reply in the user's
+current language confirming the case was created, stating that ID VERBATIM
+(never invent, reformat, or omit it), and explain the real next steps in short,
+numbered form (an advisor will review it and reach out; there's no fixed email
+timeline to promise since this app doesn't send one). Then ask whether they have
+more questions or want to add products such as life insurance or condominium add-on
+coverage. Use this structure, adapting the product/insurance type and case ID:
 
 Swedish:
-"Tack! Din ansökan om [produkt] är nu ifylld med dina uppgifter och redo för
-granskning. Här är vad som händer härnäst:
-1) En handläggare går igenom uppgifterna
-2) Du får ett bekräftelsemail inom 1–2 arbetsdagar
-3) Om allt stämmer aktiveras försäkringen från önskat startdatum
+"Tack! Din ansökan om [produkt] har skapats som ärende [case_id] och skickats till
+en handläggare på LF Bergslagen. Här är vad som händer härnäst:
+1) En handläggare går igenom uppgifterna och kontaktar dig
+2) Försäkringen aktiveras från önskat startdatum om allt stämmer
 
 Har du några fler frågor om försäkringen, eller vill du lägga till andra produkter
 som livförsäkring eller bostadsrättstillägg?"
 
 English:
-"Thank you! Your [product] application is now filled in with your details and
-ready for review. Here's what happens next:
-1) A case officer reviews the information
-2) You'll receive a confirmation email within 1–2 business days
-3) If everything checks out, the insurance activates from your requested start
-date
+"Thank you! Your [product] application has been created as case [case_id] and
+sent to an LF Bergslagen advisor. Here's what happens next:
+1) An advisor will review it and reach out to you directly
+2) The insurance activates from your requested start date if everything checks out
 
 Do you have any other questions about the insurance, or would you like to add
 other products like life insurance or condominium add-on coverage?"
@@ -173,13 +184,33 @@ Your job, in this order:
 ORDER AND PRIORITY: whenever you lay out more than one thing to do, number them (1., 2.,
 3., ...) in the order the user should actually do them, and say which ones matter this
 week versus which can wait. Never bury the order in a paragraph — use a numbered list so
-the priority is visually obvious.
+the priority is visually obvious. When priorities span more than one stage, use bold
+headings, each followed by its own separate numbered list that restarts at 1 — e.g.
+"**This week's priorities:**" then "**Things to keep in mind for later:**". Within each
+list, number items sequentially (1, 2, 3, ...) — never repeat "1." for every item in the
+same list. Any unnumbered section you add in between goes between the headed lists, and
+does not break or reset either list's own numbering. (For a home purchase specifically,
+see the four-group structure in HOME PURCHASE CHECKLIST below instead of the generic
+two-group version here.)
 
 NEVER tell the user to "visit our website", "check LF Bergslagen's site", "look at the
 website", "go to the app", or any other verbal pointer to a page without putting the real
 URL for that exact page inline as a markdown link right there in the same sentence. If you
 don't have a real URL for it from a tool result, don't reference the website at all —
 say what you can concretely, or offer the phone number instead.
+
+LINK LABELS: the clickable text of a markdown link must be the REAL Swedish label as it
+actually appears in the fetch_lf_page result you got the URL from (its "Useful links" list,
+or prominent on-page text) — never translate or paraphrase it into English. So use the
+real Swedish phrase itself (e.g. "Räkna på bolån", "Se ditt pris på hemförsäkring", "Ansök
+om livförsäkring"), never a generic English label like "home loan page", "home insurance
+page", or "life insurance page". When the fetch result offers more than one real link for
+that page, prefer whichever is the most specific and actionable (an apply/get-a-price/
+calculate link) over a generic overview URL, since that gets the customer there in fewer
+clicks. For the mortgage item specifically: LF Bergslagen's mortgage calculator ("Räkna på
+bolån") is embedded directly on the same home_loan page you already fetched, not a
+different URL — link there using the exact label "Räkna på bolån", never "home loan page"
+or "mortgage calculator".
 
 EXTERNAL SERVICE PROVIDERS: some situations aren't resolved by LF Bergslagen alone — the
 actual work is carried out by a local partner that LF Bergslagen coordinates with. Check
@@ -249,25 +280,111 @@ access, so there is no way to fetch or invent real listing data. Handle it hones
 HOME PURCHASE CHECKLIST: once you know the user is actually buying or has bought a home
 (not just wondering about it — see the clarifying-question rule above), don't limit your
 advice to home insurance alone. The full set of things a home buyer typically needs to
-sort out is:
-1. Mortgage (bolån) — fetch_lf_page("home_loan"); see MORTGAGE ROADMAP above for which of
-   the four steps applies to their stage (including finding the home itself via
-   find_home_search_link, if they haven't settled on a property yet).
-2. Home insurance (hemförsäkring) — fetch_lf_page("home_insurance").
-3. Condominium/tenant-owner insurance add-on (bostadsrättstillägg), if it's an apartment —
-   this is covered within the home_insurance fetch, don't fetch it separately.
-4. Life insurance (livförsäkring) — fetch_lf_page("life_insurance").
-5. Loan protection insurance (bolåneskydd) — fetch_lf_page("loan_protection_insurance").
-6. Setting up an electricity contract — general practical advice; LF Bergslagen doesn't
-   sell this, so no fetch and no link, just a plain reminder that it needs sorting out.
-7. Setting up a broadband subscription — same as electricity: mention it, no fetch, no link.
-8. The housing cooperative's (bostadsrättsförening) monthly membership fee, if applicable —
-   briefly explain what it is and that it's separate from the mortgage payment; no fetch.
-9. Building up emergency savings for unexpected costs — fetch_lf_page("savings") if the
-   user wants to discuss it.
-Don't dump all nine on someone who's only just started looking — apply the ORDER AND
-PRIORITY rule above: cover what's actually relevant and next for their stage, mention the
-rest as things to come back to later rather than silently leaving them out entirely.
+sort out, and their fetch_lf_page topic where one applies:
+- Mortgage (bolån) — fetch_lf_page("home_loan"); see MORTGAGE ROADMAP above for which of
+  the four steps applies to their stage.
+- Home insurance (hemförsäkring) — fetch_lf_page("home_insurance").
+- Condominium/tenant-owner insurance add-on (bostadsrättstillägg), if it's an apartment —
+  covered on the SAME home_insurance page as above (bostadsrättsförsäkring is one of the
+  policy types listed there), so cite that same fetched URL again here - don't fetch it
+  separately, but don't leave this item without a link either.
+- Setting up an electricity contract — general practical advice; LF Bergslagen doesn't
+  sell this and has no real page about it (checked: not even their general tips/guides
+  hub covers it), so no fetch and NO link - a plain reminder that it needs sorting out.
+  Never invent an electricity-provider or comparison-site link for this.
+- Setting up a broadband subscription — same as electricity: mention it, no fetch, no
+  link, never invent one.
+- The housing cooperative's (bostadsrättsförening) monthly membership fee, if applicable —
+  briefly explain what it is and that it's separate from the mortgage payment; no fetch,
+  no link, never invent one (this is paid to the specific building's own association, not
+  to LF Bergslagen).
+- Life insurance (livförsäkring) — fetch_lf_page("life_insurance").
+- Loan protection insurance (bolåneskydd) — fetch_lf_page("loan_protection_insurance").
+- Building up emergency savings for unexpected costs — fetch_lf_page("savings") if the
+  user wants to discuss it.
+
+APPLYING FOR AN ADVISORY-ONLY PRODUCT: home insurance, life insurance, loan protection
+insurance, and savings all have a real LF Bergslagen application page (via fetch_lf_page)
+but no in-chat application flow the way Loan Promise/Loan Offer do — the actual application
+always happens on that page, not in this chat. When the customer says something like "I
+want to apply", "let's do this", or "sign me up" for one of these, don't just hand them the
+bare link again (they've likely already seen it) — first tell them, in a short list, the
+specific details they should have ready before they get there (e.g. for home insurance:
+the property's address, whether it's a house/apartment/rental and its size, their move-in
+date, and their current insurer if switching; adapt the list to whichever product it is),
+THEN give the link as the next step. This is still fetch_lf_page's real URL, cited only if
+you called it this turn or earlier this conversation — never invent the details list from
+guesswork about what the page asks for beyond what's obviously needed to describe the thing
+being insured/saved for.
+
+If the customer is ACTIVELY HOUSE-HUNTING or already IN THE PROCESS of buying (not just
+considering it - MORTGAGE ROADMAP above covers "just considering" separately), group these
+into exactly four bold headings, each followed by ONE single numbered list - this mirrors
+the phases of the customer's own transition-plan checklist, so the chat and the checklist
+panel read as the same plan. Each heading's list is one unbroken sequence: number every
+item in it 1, 2, 3, ... with no restart and no other numbered or bulleted list nested
+inside any item - links inside an item are plain inline markdown links in that item's own
+sentence, never a separate bullet sub-list.
+
+If the customer hasn't settled on a specific property yet, "**This week's priorities:**"
+ALWAYS has exactly 4 items, in exactly this order and numbering - item 4 is never
+skipped and never merged into item 3, even when you don't yet know if it's a house or an
+apartment:
+1. Home Search — MANDATORY, not optional: call find_home_search_link (even without a
+   location yet) and say, in one or two sentences within this same item (no sub-bullets),
+   that they can search for homes themselves on Booli.se and Hemnet.se. Both must be real,
+   clickable markdown links in [label](url) form - e.g. "[Booli.se](https://www.booli.se)"
+   - never write the site name followed by a bare URL in parentheses like
+   "Booli.se (https://www.booli.se)", since that isn't a clickable link to the customer.
+2. Mortgage (bolån) — bold this item's label like the others (e.g. "**Mortgage
+   (bolån)**"), and also bold "Lånelöfte" specifically when it appears within it, e.g.:
+   "**Mortgage (bolån)**: You'll need a **Lånelöfte** (Loan Promise) before bidding
+   seriously - an income-based statement of how much you could likely borrow, valid for
+   3 months."
+3. Home insurance (hemförsäkring) — this item is ONLY about home insurance in general;
+   never mention the condominium add-on here, it belongs in item 4.
+4. Condominium/tenant-owner insurance add-on (bostadsrättstillägg) — its own numbered
+   item, ALWAYS present as item 4 (never omitted, never folded into item 3's text) even
+   if you don't yet know whether it's a house or an apartment; word its content
+   conditionally, e.g. "If you're buying an apartment (bostadsrätt), you'll also need
+   this add-on to your home insurance." Cite the SAME home_insurance URL you already used
+   in item 3 as a markdown link here too, with a real Swedish label from that same fetch
+   result (e.g. "[Hemförsäkring](url)" or another real label you saw there - never the
+   English phrase "home insurance page") - it's the real page this product is actually on,
+   not a new fetch.
+If they've already settled on a specific property AND you know it's not an apartment, drop
+item 1 (Home Search) and/or item 4 (condominium add-on) as appropriate and renumber the
+rest. Otherwise keep all 4.
+
+"**Secure the mortgage:**" is a separate list, immediately after "This week's priorities:"
+and before "Before you move in:", restarting at 1, with exactly 2 items in this order:
+1. Receive Purchase Agreement — the seller-signed purchase agreement (köpekontrakt) they'll
+   get once their bid is accepted; needed before the next step.
+2. Secure Loan Offer — once they have the purchase agreement, they apply for their final
+   mortgage approval (bolån, moving from the earlier Lånelöfte/Loan Promise to a binding
+   Loan Offer) - mention they can start that application right here in this chat.
+
+"**Before you move in:**" is a separate list, restarting at 1, with exactly 3 items in
+this order: 1. Electricity contract, 2. Broadband subscription, 3. Housing-cooperative fee.
+
+"**Later:**" is a separate list, restarting at 1, with exactly 3 items in this order:
+1. Life insurance, 2. Loan protection insurance, 3. Emergency savings.
+
+Before writing any of the four lists, call fetch_lf_page for every one of home_loan,
+home_insurance, life_insurance, loan_protection_insurance, and savings, plus
+find_home_search_link if Home Search applies - all in this same reply, even though that's
+several calls. Never write a sentence pointing to one of these pages unless you called its
+fetch this turn - an unfetched, unverified link gets silently deleted from your reply,
+leaving a dangling "here: " with nothing after it, which looks broken to the customer.
+
+Before sending your reply, check each of the four lists: are its items numbered 1, 2, 3,
+... with no restart partway through, no item missing, and no sub-bullets under any item?
+If not, renumber and fix it before responding.
+
+For any other stage (just considering, or asking about one specific item only), don't
+force this four-group structure - apply the generic ORDER AND PRIORITY rule instead:
+cover what's actually relevant and next for their stage, mention the rest as things to
+come back to later rather than silently leaving them out entirely.
 
 PORTFOLIO IDENTITY FLOW: when the user asks about their existing product portfolio, this
 touches a real customer's account, so never skip verification and never guess or assume an
@@ -389,6 +506,30 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "submit_insurance_application",
+            "description": (
+                "Actually submit a confirmed, filled application form - creates a real "
+                "case a Customer Service advisor will see and can pick up. Call this "
+                "ONLY after the customer has confirmed a form fill_customer_form produced "
+                "is correct; never before. Re-reads the filled form from the conversation "
+                "itself, so no form data needs to be passed in. Returns the real case ID - "
+                "state it verbatim in your reply."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product": {
+                        "type": "string",
+                        "description": "The product being applied for, e.g. 'Hemförsäkring hyresrätt' or 'home insurance' - used in the case description.",
+                    },
+                },
+                "required": ["product"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "fetch_lf_page",
             "description": (
                 "Fetch the current content of a specific Länsförsäkringar Bergslagen "
@@ -439,20 +580,50 @@ TOOLS = [
         "function": {
             "name": "find_home_search_link",
             "description": (
-                "Point the customer to Booli.se, Sweden's largest home-search site, for "
-                "actual apartment/villa listings, and report whether the location falls "
-                "inside LF Bergslagen's own service area. Cannot return specific listings — "
-                "live search results aren't reachable from this chat."
+                "Point the customer to Booli.se and Hemnet.se, Sweden's two largest "
+                "home-search sites, for actual apartment/villa listings, and report whether "
+                "the location falls inside LF Bergslagen's own service area. Cannot return "
+                "specific listings — live search results aren't reachable from this chat. "
+                "Location is optional - call it with none yet for an early, general mention "
+                "of both sites before you know where the customer is looking."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {"type": "string", "description": "The town/area the customer is looking in."},
+                    "location": {"type": "string", "description": "The town/area the customer is looking in, if known yet."},
                     "property_type": {"type": "string", "description": "e.g. apartment, villa, if the customer mentioned one."},
                     "price_range": {"type": "string", "description": "e.g. '3-4 million SEK', if the customer mentioned one."},
                 },
-                "required": ["location"],
+                "required": [],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_car_insurance",
+            "description": (
+                "Fetch LF Bergslagen's real, live tier comparison table for car insurance "
+                "(Helförsäkring/Halvförsäkring/Trafikförsäkring, feature by feature). Use "
+                "when the customer is deciding between car insurance levels. Takes no "
+                "arguments. May return that no table is available right now - in that case "
+                "fall back to fetch_lf_page(\"car_insurance\") instead."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_home_insurance",
+            "description": (
+                "Return LF Bergslagen's home insurance tier comparison (Bas/Mellan/Stor) so "
+                "the customer can evaluate levels side by side, plus a personalized tier "
+                "recommendation when the conversation gives enough signal (e.g. buying a "
+                "condo, working remotely, frequent international travel). Takes no "
+                "arguments - it reads the conversation itself."
+            ),
+            "parameters": {"type": "object", "properties": {}},
         },
     },
     {
@@ -567,9 +738,10 @@ SERVICE_RESOLVED_MARKER = "LF Bergslagen partner"
 HOME_PURCHASE_KEYWORDS = [
     "buy a house", "buying a house", "buy a home", "buying a home",
     "buy an apartment", "buying an apartment", "buy a holiday home",
-    "buying a holiday home", "holiday home",
+    "buying a holiday home", "holiday home", "buy a condominium",
+    "buying a condominium", "purchase a home", "purchase a house",
     "köpa hus", "köpa ett hus", "köpa bostad", "köpa lägenhet",
-    "köpa fritidshus", "köpa ett fritidshus",
+    "köpa fritidshus", "köpa ett fritidshus", "köpa bostadsrätt",
 ]
 HOME_STAGE_INDICATOR_KEYWORDS = [
     "already bought", "just bought", "just moved in", "signed the contract",
@@ -587,6 +759,17 @@ def _home_purchase_stage_unclear(history: list[dict]) -> bool:
     mentions_home_purchase = any(kw in text for kw in HOME_PURCHASE_KEYWORDS)
     mentions_stage = any(kw in text for kw in HOME_STAGE_INDICATOR_KEYWORDS)
     return mentions_home_purchase and not mentions_stage
+
+
+def mentions_home_purchase(history: list[dict]) -> bool:
+    """Whether the customer has mentioned buying a home ANYWHERE in this
+    chat so far - used to auto-create the sidebar's home-purchase plan
+    (see main.py's /api/chat) without requiring the manual "Create
+    home-purchase plan" button. Checks the whole conversation, not just the
+    last message, unlike _home_purchase_stage_unclear above (which is about
+    whether THIS turn's reply should ask a clarifying question)."""
+    text = " ".join(m.get("content", "") for m in history if m.get("role") == "user").lower()
+    return any(kw in text for kw in HOME_PURCHASE_KEYWORDS)
 
 
 # Two word-lists, AND-matched, rather than exact phrases - a customer can ask
@@ -611,6 +794,40 @@ def _wants_home_search(history: list[dict]) -> bool:
     last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
     text = last_user.lower()
     return any(w in text for w in HOME_SEARCH_PROPERTY_WORDS) and any(w in text for w in HOME_SEARCH_INTENT_WORDS)
+
+
+# Same AND-match style as HOME_SEARCH above: needs both a car-insurance
+# mention AND a compare/decide-between-levels signal, so "tell me about car
+# insurance" (handled fine by the general fetch_lf_page flow) doesn't
+# trigger the comparison table when the customer isn't actually choosing
+# between tiers.
+CAR_INSURANCE_WORDS = ["car insurance", "bilförsäkring", "bilforsakring"]
+INSURANCE_COMPARE_WORDS = [
+    "compare", "comparison", "which level", "which tier", "what level",
+    "difference between", "should i get", "should i choose", "which one",
+    "which is better", "full coverage or", " vs ", "versus", "which insurance",
+    "jämför", "skillnaden mellan", "vilken nivå", "vilken jag ska välja",
+]
+
+
+def _wants_car_insurance_comparison(history: list[dict]) -> bool:
+    last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
+    text = last_user.lower()
+    return any(w in text for w in CAR_INSURANCE_WORDS) and any(w in text for w in INSURANCE_COMPARE_WORDS)
+
+
+# Same AND-match pattern for home insurance's own tier comparison (Bas/
+# Mellan/Stor) - see compare_home_insurance in tools.py.
+HOME_INSURANCE_WORDS = [
+    "home insurance", "hemförsäkring", "hemforsakring", "house insurance",
+    "villaförsäkring", "villaforsakring", "apartment insurance",
+]
+
+
+def _wants_home_insurance_comparison(history: list[dict]) -> bool:
+    last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
+    text = last_user.lower()
+    return any(w in text for w in HOME_INSURANCE_WORDS) and any(w in text for w in INSURANCE_COMPARE_WORDS)
 
 
 def _detect_service_category(history: list[dict]) -> str | None:
@@ -659,7 +876,7 @@ CONTACT_MENU_CHAT_LABEL = {"en": "Chat with a representative", "sv": "Chatta med
 
 def wants_human_contact(history: list[dict]) -> bool:
     last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
-    text = last_user.lower()
+    text = strip_attachments(last_user).lower()
     return any(kw in text for kw in HUMAN_CONTACT_KEYWORDS)
 
 
@@ -667,6 +884,68 @@ def contact_menu_response(lang: str | None) -> tuple[str, list[str], dict]:
     key = "sv" if lang == "sv" else "en"
     suggestions = [CONTACT_MENU_CALL_LABEL[key], CONTACT_MENU_CHAT_LABEL[key]]
     return CONTACT_MENU_TEXT[key], suggestions, {"human_chat_option": CONTACT_MENU_CHAT_LABEL[key]}
+
+
+# Someone who's already bought (closed on) a home has, by definition,
+# already sorted out the financing/insurance-for-closing steps ("This
+# week's priorities" in the HOME PURCHASE CHECKLIST three-group structure -
+# a Swedish mortgage lender requires proof of home insurance before closing,
+# and the Loan Offer has to be finalized as part of it) - so the checklist
+# for this stage should skip straight to "Before you move in"/"Later". This
+# also touches the customer's real situation, so it's gated behind the same
+# BankID check the mortgage flows use, rather than just taking the
+# customer's word for what stage they're at.
+ALREADY_BOUGHT_KEYWORDS = [
+    "i bought", "i've bought", "i have bought", "just bought", "already bought",
+    "bought the apartment", "bought the house", "bought my apartment", "bought my house",
+    "jag har köpt", "jag köpte", "redan köpt", "precis köpt",
+]
+POST_PURCHASE_AUTH_TEXT = {
+    "en": (
+        "Congrats on the purchase! Since this touches your actual situation, I first need "
+        "to verify your identity via BankID before giving you tailored next steps."
+    ),
+    "sv": (
+        "Grattis till köpet! Eftersom det här rör din faktiska situation behöver jag först "
+        "verifiera din identitet via BankID innan jag ger dig skräddarsydda nästa steg."
+    ),
+}
+
+
+def wants_post_purchase_checklist(history: list[dict]) -> bool:
+    # Only the last couple of turns, not the whole conversation - this is a
+    # short two-step interaction (mention the purchase -> authenticate ->
+    # get the trimmed checklist), not a sticky flag for the rest of the
+    # chat the way the mortgage application flows are. It naturally stops
+    # firing once the exchange scrolls out of this window, so it doesn't
+    # need a separate "resolved" marker to detect (and risk colliding with
+    # the ordinary checklist's own "Before you move in"/"Later" headings,
+    # which this flow deliberately reuses).
+    recent_user_text = " ".join(
+        m.get("content", "") for m in history[-4:] if m.get("role") == "user"
+    ).lower()
+    return any(kw in recent_user_text for kw in ALREADY_BOUGHT_KEYWORDS)
+
+
+# Universal rule: a customer can never have an attached document read,
+# summarised, or filled into a form until they've verified their identity
+# via BankID - regardless of which conversation path they're on. The
+# mortgage/Loan Promise, Loan Offer, and post-purchase-checklist flows above
+# already each gate documents behind their own identity check before this
+# point is ever reached; this is the fallback for every other path (a bare
+# document upload, a general question with a payslip attached, an
+# unprompted "fill this form for me") that would otherwise fall through to
+# the general system prompt, which is instructed to read attachments freely.
+ATTACHMENT_AUTH_REQUIRED_TEXT = {
+    "en": (
+        "Before I can look at an attached document, I first need to verify your identity "
+        "via BankID."
+    ),
+    "sv": (
+        "Innan jag kan titta på ett bifogat dokument behöver jag först verifiera din "
+        "identitet via BankID."
+    ),
+}
 
 
 # Same nudge pattern again: asking about a product portfolio requires
@@ -737,7 +1016,20 @@ def _wants_case_status(history: list[dict]) -> bool:
 
 
 
-def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[str], dict]:
+def run_agent(
+    history: list[dict], lang: str | None = None, plan_context: str | None = None
+) -> tuple[str, list[str], dict]:
+    reply, suggestions, extra = _run_agent(history, lang, plan_context)
+    progress_history = [*history, {"role": "assistant", "content": reply}]
+    progress = compute_transition_progress(progress_history)
+    if progress:
+        extra = {**extra, "progress": progress}
+    return reply, suggestions, extra
+
+
+def _run_agent(
+    history: list[dict], lang: str | None = None, plan_context: str | None = None
+) -> tuple[str, list[str], dict]:
     if wants_human_contact(history):
         reply, suggestions, extra = contact_menu_response(lang)
         return reply, suggestions, extra
@@ -752,7 +1044,51 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
     if fraud_or_dispute and not fraud_dispute_flow_resolved(history):
         return run_fraud_dispute_agent(history, lang, fraud_or_dispute)
 
+    # Fallback gate for every path above that didn't already claim the turn
+    # (and so didn't already run its own identity check before touching a
+    # document) - see ATTACHMENT_AUTH_REQUIRED_TEXT's comment above.
+    if has_attachment(history) and not bankid_chosen(history):
+        key = "sv" if lang == "sv" else "en"
+        return ATTACHMENT_AUTH_REQUIRED_TEXT[key], AUTH_CHOICE_SUGGESTIONS[key], {"form": AUTH_CHOICE_FORM}
+
+    post_purchase = wants_post_purchase_checklist(history)
+    if post_purchase and not bankid_chosen(history):
+        key = "sv" if lang == "sv" else "en"
+        return POST_PURCHASE_AUTH_TEXT[key], AUTH_CHOICE_SUGGESTIONS[key], {"form": AUTH_CHOICE_FORM}
+
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if post_purchase and bankid_chosen(history):
+        verified = verify_customer_by_personnummer(BANKID_DEMO_PERSONNUMMER)
+        messages.append({
+            "role": "system",
+            "content": (
+                "The customer's identity is ALREADY fully verified via BankID"
+                + (f" (name: {verified['name']})" if verified else "")
+                + " - this already happened, it is not something you need to do or ask about. "
+                "Do NOT ask for their name, personnummer, or date of birth, do NOT mention "
+                "needing to verify or authenticate them further, and do NOT say anything about "
+                "BankID at all in your reply - just answer their question directly. They have "
+                "already bought/closed on their property. Mortgage financing (the Loan Offer) "
+                "and home insurance are presumed already sorted as part of closing a Swedish "
+                "home purchase, so do NOT show a 'This week's priorities' section or mention "
+                "mortgage/Loan Offer/home insurance/condominium add-on as still pending. "
+                "Using the HOME PURCHASE CHECKLIST's phase grouping, show ONLY the "
+                "'**Before you move in:**' and '**Later:**' headed lists (electricity, "
+                "broadband, housing-cooperative fee; then life insurance, loan protection, "
+                "emergency savings), in that order, in the same format as the full checklist."
+            ),
+        })
+    if plan_context:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"{plan_context}\n"
+                    "The backend, not you, updates plan status from explicit customer statements. "
+                    "Follow the next-task ordering exactly when discussing priorities."
+                ),
+            }
+        )
     if lang in LANGUAGE_NAMES:
         # A UI language toggle, not a hard override: the LANGUAGE RULE above
         # (always match what the user actually typed) still wins whenever
@@ -823,6 +1159,43 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
             }
         )
 
+    if _wants_car_insurance_comparison(history):
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "The user is deciding between car insurance levels - call "
+                    "compare_car_insurance this turn. It returns LF Bergslagen's real, live "
+                    "tier comparison table - a structured table is rendered separately in the "
+                    "UI from this result, so your reply text should narrate/summarize it "
+                    "briefly (e.g. which tier covers what, and a plain-language recommendation "
+                    "if the conversation gives you enough to base one on) rather than "
+                    "re-listing every row. If the tool result says no table is available, fall "
+                    "back to fetch_lf_page(\"car_insurance\") instead and describe it in text as "
+                    "usual - never invent table rows of your own."
+                ),
+            }
+        )
+
+    if _wants_home_insurance_comparison(history):
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "The user is deciding between home insurance levels - call "
+                    "compare_home_insurance this turn. It returns LF Bergslagen's Bas/Mellan/"
+                    "Stor tier comparison and, when the conversation gives enough signal "
+                    "(buying a condo, working remotely, frequent international travel), a "
+                    "personalized recommended tier - a structured table (with a recommendation "
+                    "badge/footnote if one was computed) is rendered separately in the UI from "
+                    "this result, so your reply text should narrate/summarize it briefly rather "
+                    "than re-listing every row. If a recommendation was computed, you may "
+                    "briefly reinforce it in your own words, but never invent a different tier "
+                    "or reasoning than what the tool actually returned."
+                ),
+            }
+        )
+
     identity_flow = _detect_identity_flow(history)
     if identity_flow and not _identity_flow_resolved(history):
         messages.append(
@@ -882,9 +1255,11 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
         or (_wants_callback(history) and not _callback_already_resolved(history))
         or _wants_case_status(history)
         or _wants_home_search(history)
+        or _wants_car_insurance_comparison(history)
     )
 
     seen_urls: set[str] = set()
+    comparison_table: dict | None = None
     filled_form: dict | None = None
 
     for round_index in range(MAX_TOOL_ROUNDS):
@@ -926,7 +1301,9 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
             last_user_message = next(
                 (m.get("content", "") for m in reversed(history) if m.get("role") == "user"), ""
             )
-            extra = {"form": filled_form} if filled_form else {}
+            extra = {"comparison_table": comparison_table} if comparison_table else {}
+            if filled_form:
+                extra["form"] = filled_form
             return reply, generate_suggestions(last_user_message, reply), extra
 
         for call in tool_calls:
@@ -944,6 +1321,8 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
                     filled_form = json.loads(result)
                 except json.JSONDecodeError:
                     filled_form = None
+            elif name == "submit_insurance_application":
+                result = submit_insurance_application(history, args.get("product", "insurance"))
             elif name == "find_service_provider":
                 result = find_service_provider(
                     args.get("category", ""), args.get("location", "")
@@ -965,6 +1344,42 @@ def run_agent(history: list[dict], lang: str | None = None) -> tuple[str, list[s
                     args.get("location", ""), args.get("property_type", ""), args.get("price_range", "")
                 )
                 seen_urls.update(URL_RE.findall(result))
+            elif name == "compare_car_insurance":
+                table = fetch_car_insurance_comparison()
+                if table:
+                    comparison_table = table
+                    result = (
+                        f"Loaded the real comparison table: {len(table['rows'])} features across "
+                        f"{len(table['columns'])} tiers ({', '.join(table['columns'])}). It will be "
+                        "shown to the customer as a table separately - summarize it briefly in your "
+                        "reply text, don't re-list every row."
+                    )
+                else:
+                    result = (
+                        "No comparison table available right now (live fetch blocked and no cached "
+                        "copy). Call fetch_lf_page(\"car_insurance\") instead and describe it in text."
+                    )
+            elif name == "compare_home_insurance":
+                comparison_table = compare_home_insurance(history)
+                if comparison_table["recommended_column"] is not None:
+                    recommended_tier = comparison_table["columns"][comparison_table["recommended_column"]]
+                    result = (
+                        f"Loaded the home insurance tier comparison ({', '.join(comparison_table['columns'])}). "
+                        f"Based on this conversation, {recommended_tier} could be a good fit - reasoning: "
+                        f"{comparison_table['recommendation_note']} The table and this pointer are shown to "
+                        "the customer separately in the UI - briefly mention it in your reply text as one "
+                        "option worth a look, not a decision already made for them; make clear the choice "
+                        "is theirs (or an LF Bergslagen advisor can help them decide) and don't invent "
+                        "different reasoning."
+                    )
+                else:
+                    result = (
+                        f"Loaded the home insurance tier comparison ({', '.join(comparison_table['columns'])}). "
+                        "Not enough signal in this conversation yet to recommend a specific tier - the table "
+                        "is shown to the customer separately in the UI; briefly summarize it in your reply "
+                        "text and, if useful, ask a clarifying question (e.g. condo vs house, how often they "
+                        "travel) so a personalized recommendation can be made next turn."
+                    )
             else:
                 topic = args.get("topic", "")
                 result = fetch_lf_page(topic)

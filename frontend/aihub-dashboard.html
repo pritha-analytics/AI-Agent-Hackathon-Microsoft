@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Hub — Sara Performance Dashboard</title>
-  <link rel="stylesheet" href="aihub-dashboard.css" />
+  <link rel="stylesheet" href="aihub-dashboard.css?v=audit-integrity-20260919" />
+  <link rel="stylesheet" href="audit-render.css?v=audit-integrity-20260919" />
 </head>
 <body>
   <header class="topbar">
@@ -12,10 +13,19 @@
       <span class="avatar">AI</span>
       <div class="brand-text">
         <span class="brand-name">AI Hub — Sara Performance Dashboard</span>
-        <span class="brand-sub">LF Bergslagen · Digital assistant monitoring</span>
+        <span class="brand-sub">LF Bergslagen · Digital Companion monitoring</span>
       </div>
     </div>
     <div class="header-actions">
+      <label class="role-switcher">
+        <span class="role-switcher-label">Viewing as</span>
+        <select id="role-select">
+          <option value="MANAGER">Manager</option>
+          <option value="AI_ENGINEER">AI Engineering</option>
+          <option value="AUDITOR">Auditor</option>
+          <option value="MARKETING">Marketing</option>
+        </select>
+      </label>
       <span id="last-updated" class="last-updated">—</span>
       <button id="refresh-btn" class="refresh-btn" type="button">Refresh</button>
     </div>
@@ -23,7 +33,7 @@
 
   <main class="shell">
 
-    <section class="section">
+    <section class="section" data-role-section="interactions" hidden>
       <h2 class="section-title">Customer interaction performance</h2>
 
       <div class="stat-grid">
@@ -87,9 +97,22 @@
           </div>
         </div>
       </div>
+
+      <div class="panel-grid">
+        <div class="panel panel-wide">
+          <h3 class="panel-title">Customer insights — satisfaction by topic</h3>
+          <p class="panel-sub">Every star rating is tagged with what the conversation was about, worst-rated first, so a low score is traceable to a specific kind of interaction rather than lost in one overall average.</p>
+          <table class="token-table">
+            <thead>
+              <tr><th>Topic</th><th>Ratings</th><th>Average</th><th></th></tr>
+            </thead>
+            <tbody id="customer-insights-body"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
-    <section class="section">
+    <section class="section" data-role-section="ai_analytics" hidden>
       <h2 class="section-title">Agent performance — technical</h2>
 
       <div class="stat-grid">
@@ -108,11 +131,6 @@
           <div class="stat-value" id="stat-avg-tokens">—</div>
           <div class="stat-sub">prompt + completion</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Audit chain integrity</div>
-          <div class="stat-value" id="stat-audit-integrity">—</div>
-          <div class="stat-sub" id="stat-audit-entries">—</div>
-        </div>
       </div>
 
       <div class="panel">
@@ -130,9 +148,110 @@
           <tbody id="token-table-body"></tbody>
         </table>
       </div>
+
+      <div class="panel-grid">
+        <div class="panel panel-wide">
+          <h3 class="panel-title">Tokens by chat subject — week over week</h3>
+          <p class="panel-hint">Which topics are costing the most, and whether that's rising or falling.</p>
+          <div id="token-topic-trend" class="token-trend-table"></div>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Satisfaction vs. response speed</h3>
+          <p class="panel-hint">Does a slower reply correlate with a lower rating?</p>
+          <div class="correlation-stat">
+            <span class="correlation-value" id="stat-correlation">—</span>
+            <span class="correlation-label" id="stat-correlation-label">correlation coefficient</span>
+          </div>
+          <div id="correlation-chart" class="bar-chart bar-chart-vertical correlation-chart"></div>
+        </div>
+      </div>
     </section>
+
+    <section class="section" data-role-section="audit_trail" hidden>
+      <h2 class="section-title">Audit history</h2>
+      <p class="section-note">
+        For auditors: chain integrity plus a concise feed of interactions and the actions agents took on them.
+        Click any row for the full detail view.
+      </p>
+
+      <div class="stat-grid audit-stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Audit chain integrity</div>
+          <div class="stat-value" id="stat-audit-integrity">—</div>
+          <div class="stat-sub" id="stat-audit-entries">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head-row">
+          <h3 class="panel-title">Recent agent actions</h3>
+          <select id="audit-agent-filter" class="audit-filter">
+            <option value="">All agents</option>
+          </select>
+        </div>
+        <div id="audit-history-list" class="audit-list"></div>
+      </div>
+    </section>
+
+    <section class="section" data-role-section="contact_rules" hidden>
+      <h2 class="section-title">Contact Rules</h2>
+      <p class="section-note">
+        For Marketing: who gets shown which offer, and how often. Changes take effect immediately -
+        no restart needed.
+      </p>
+
+      <div class="panel">
+        <h3 class="panel-title">Click cooldown</h3>
+        <p class="panel-hint">
+          How long a customer must wait before the same offer can be shown again after they click it.
+        </p>
+        <form id="cooldown-form" class="cooldown-form">
+          <input type="number" id="cooldown-input" min="0" max="86400" step="1" />
+          <span class="cooldown-unit">seconds</span>
+          <button type="submit">Save</button>
+          <span id="cooldown-status" class="rule-status"></span>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3 class="panel-title">Offer targeting by customer tier</h3>
+        <p class="panel-hint">
+          Restrict an offer to specific tiers. No tiers checked = shown to every tier (default).
+          Products the customer already owns are never shown regardless of these settings.
+        </p>
+        <table class="offer-rules-table" id="offer-rules-table">
+          <thead>
+            <tr>
+              <th>Offer</th>
+              <th>Category</th>
+              <th>Product family</th>
+              <th>Eligible tiers</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="offer-rules-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div id="no-access-hint" class="no-access-hint" hidden>
+      This role has no dashboard sections to show. Switch roles above to see Interactions,
+      AI Analytics, Audit Trail, or Contact Rules.
+    </div>
   </main>
 
-  <script src="aihub-dashboard.js"></script>
+  <div id="audit-modal-overlay" class="audit-modal-overlay" hidden>
+    <div class="audit-modal-panel">
+      <div class="audit-modal-head">
+        <h3>Interaction detail</h3>
+        <button id="audit-modal-close" class="audit-modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div id="audit-modal-body" class="audit-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="audit-render.js?v=audit-integrity-20260919"></script>
+  <script src="aihub-dashboard.js?v=audit-integrity-20260919"></script>
 </body>
 </html>

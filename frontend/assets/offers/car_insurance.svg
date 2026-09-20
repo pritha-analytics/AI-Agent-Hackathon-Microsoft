@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#eaf1f8"/>
+  <path d="M80 118 C80 100 96 88 112 88 L208 88 C224 88 240 100 240 118 L240 128 C240 134 236 138 230 138 L90 138 C84 138 80 134 80 128 Z" fill="#0d3b66"/>
+  <path d="M104 88 L120 62 L200 62 L216 88 Z" fill="#0d3b66"/>
+  <rect x="126" y="68" width="26" height="18" fill="#eaf1f8"/>
+  <rect x="168" y="68" width="26" height="18" fill="#eaf1f8"/>
+  <circle cx="112" cy="140" r="14" fill="#1c2733"/>
+  <circle cx="208" cy="140" r="14" fill="#1c2733"/>
+  <circle cx="112" cy="140" r="5" fill="#eaf1f8"/>
+  <circle cx="208" cy="140" r="5" fill="#eaf1f8"/>
+  <rect x="0" y="150" width="320" height="30" fill="#0d3b66"/>
+  <text x="160" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="700">Car Insurance Bundle</text>
+</svg>

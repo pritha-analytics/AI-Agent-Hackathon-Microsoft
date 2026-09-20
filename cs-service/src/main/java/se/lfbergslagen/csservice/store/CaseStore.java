@@ -5,23 +5,29 @@ import org.springframework.stereotype.Component;
 import se.lfbergslagen.csservice.model.Case;
 import se.lfbergslagen.csservice.model.CaseStatus;
 import se.lfbergslagen.csservice.model.CaseType;
+import se.lfbergslagen.csservice.repository.CaseRepository;
 
 import java.security.SecureRandom;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory case store - this is a demo workflow app, not backed by a real
- * database. Data resets whenever the service restarts.
+ * Case store backed by Spring Data JPA (CaseRepository) - see
+ * application.properties for which database. Was previously an in-memory
+ * ConcurrentHashMap; callers that mutate a Case returned by get() must call
+ * save() afterwards for the change to persist (see CaseController).
  */
 @Component
 public class CaseStore {
 
-    private final Map<String, Case> cases = new ConcurrentHashMap<>();
+    private final CaseRepository repository;
     private final SecureRandom random = new SecureRandom();
+
+    public CaseStore(CaseRepository repository) {
+        this.repository = repository;
+    }
 
     public Case create(CaseType type, String customerName, String customerId, String description, Map<String, String> extra) {
         Case c = new Case();
@@ -32,30 +38,40 @@ public class CaseStore {
         c.setCustomerId(customerId);
         c.setDescription(description);
         c.setExtra(extra != null ? new LinkedHashMap<>(extra) : new LinkedHashMap<>());
-        cases.put(c.getId(), c);
-        return c;
+        return repository.save(c);
     }
 
     public Optional<Case> get(String id) {
-        return Optional.ofNullable(cases.get(id));
+        return repository.findById(id);
     }
 
     public Collection<Case> list() {
-        return cases.values();
+        return repository.findAll();
+    }
+
+    /** Persists changes made to a Case previously returned by get(). */
+    public Case save(Case c) {
+        return repository.save(c);
     }
 
     private String generateId() {
         String id;
         do {
             id = "CASE-" + (100000 + random.nextInt(900000));
-        } while (cases.containsKey(id));
+        } while (repository.existsById(id));
         return id;
     }
 
     /** Seed data so a customer can ask about an ongoing mortgage application
-     * by ID in a demo without first having created one. */
+     * by ID in a demo without first having created one. Guarded by count():
+     * data now persists across restarts, so this must only run once against
+     * a fresh database, not clobber real cases on every subsequent boot. */
     @PostConstruct
     public void seed() {
+        if (repository.count() > 0) {
+            return;
+        }
+
         Case mortgage = new Case();
         mortgage.setId("CASE-700001");
         mortgage.setType(CaseType.MORTGAGE_APPLICATION);
@@ -68,7 +84,7 @@ public class CaseStore {
         extra.put("loanAmount", "2,400,000 SEK");
         extra.put("nextStep", "Awaiting property valuation report");
         mortgage.setExtra(extra);
-        cases.put(mortgage.getId(), mortgage);
+        repository.save(mortgage);
 
         Case mortgage2 = new Case();
         mortgage2.setId("CASE-700002");
@@ -82,6 +98,6 @@ public class CaseStore {
         extra2.put("loanAmount", "3,100,000 SEK");
         extra2.put("nextStep", "Approved - funds disbursed");
         mortgage2.setExtra(extra2);
-        cases.put(mortgage2.getId(), mortgage2);
+        repository.save(mortgage2);
     }
 }

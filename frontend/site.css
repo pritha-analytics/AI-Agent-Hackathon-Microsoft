@@ -1,143 +1,141 @@
-:root {
-  --lf-navy: #002f5f;
-  /* Sampled from the hero band of the reference screenshot (uniform #e3f4fc). */
-  --lf-light-blue: #e3f4fc;
-  --lf-red: #d32f2f;
-  /* Muted coral used for accent strokes in the hero illustration; sampled from
-     LF's illustration sheet (frontend_refs). */
-  --lf-coral: #ec5c5c;
-  --lf-border: #e5e7eb;
-  --lf-muted: #6b7280;
-  --lf-serif: Georgia, "Times New Roman", serif;
-  --lf-sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-}
-
-/* Marketing/demo homepage for LF Bergslagen. The header, hero and "Populärt"
-   cards follow the public LF Bergslagen site (used with LF's permission);
-   the rest still reuses the color tokens defined in style.css (:root) so it
-   stays consistent with the chat app embedded here as a widget. */
+/* Marketing/demo homepage for LF Bergslagen -- reuses the color tokens
+   defined in style.css (:root) so it stays visually consistent with the
+   chat app itself, which is embedded here as a widget. */
 
 .site-body {
   display: block;
-  font-family: var(--lf-sans);
   height: auto;
   min-height: 100vh;
   overflow-y: auto;
 }
 
-/* Shared thin line-art style for every inline SVG icon on the page. */
-.ui-icon,
-.card-icon,
-.moment-icon {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+/* Thin utility bar above the main nav (Private / Business tabs), matching
+   the real lansforsakringar.se layout. Private is the only tab that does
+   anything here - this demo only covers private customers, so Business &
+   Agriculture is intentionally inert, same convention as the footer's
+   placeholder links. */
+.site-utility-bar {
+  background: var(--lf-blue-dark);
+  padding: 0 32px;
 }
 
-.ui-icon {
-  flex-shrink: 0;
-  height: 16px;
-  stroke-width: 1.75;
-  width: 16px;
+.site-utility-tabs {
+  display: flex;
+  gap: 20px;
 }
 
-/* --- Header --- */
+.site-utility-tab {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 0;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+
+.site-utility-tab.active {
+  color: white;
+  border-bottom-color: white;
+}
+
+.site-utility-tab:hover {
+  color: white;
+}
 
 .site-nav {
   align-items: center;
   background: white;
-  border-bottom: 1px solid var(--lf-border);
+  border-bottom: 1px solid var(--border);
   display: flex;
-  gap: 28px;
-  padding: 10px max(32px, calc((100% - 1320px) / 2));
+  gap: 24px;
+  justify-content: space-between;
+  padding: 14px 32px;
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
-.site-logo {
-  display: block;
-  flex-shrink: 0;
-}
-
-.site-logo img {
-  display: block;
-  height: auto;
-  max-width: 100%;
-}
-
-.site-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  margin-left: auto;
-}
-
-.site-links a {
-  color: var(--lf-navy);
-  font-size: 15px;
-  font-weight: 400;
-  text-decoration: none;
-}
-
-.site-links a:hover {
-  text-decoration: underline;
-}
-
-.site-tools {
+/* Icon-style utility links (Loans/Search/Log in/Menu), replacing the plain
+   text nav - mirrors the real site's header. Search and Log in are
+   intentionally inert (no real search or auth in this demo); Loans and
+   Menu do something (open chat / jump to the product grid). */
+.site-icon-links {
   align-items: center;
   display: flex;
-  gap: 28px;
+  gap: 22px;
 }
 
-.site-tool {
+.site-icon-link {
   align-items: center;
-  color: var(--lf-navy);
-  display: inline-flex;
-  font-size: 14px;
-  font-weight: 700;
+  background: none;
+  border: none;
+  color: var(--lf-blue-dark);
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  font-size: 13px;
+  font-weight: 600;
   gap: 6px;
+  padding: 0;
   text-decoration: none;
-  white-space: nowrap;
 }
 
-.site-tool:hover {
-  text-decoration: underline;
+.site-icon-link-glyph {
+  font-size: 15px;
 }
 
-/* --- Hero --- */
+.site-icon-link-glyph-svg {
+  height: 15px;
+  width: 15px;
+}
+
+.site-icon-link:hover {
+  color: var(--lf-blue);
+}
+
+.site-logo {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.site-logo-mark {
+  display: block;
+  height: 32px;
+  width: auto;
+}
+
+.btn-icon {
+  height: 16px;
+  width: 16px;
+  filter: brightness(0) invert(1);
+}
 
 .hero {
   align-items: center;
-  background: var(--lf-light-blue);
-  display: grid;
+  background: linear-gradient(135deg, #eef3f8 0%, var(--bg) 100%);
+  display: flex;
+  flex-wrap: wrap;
   gap: 32px;
-  grid-template-columns: 45fr 55fr;
-  padding: 56px max(32px, calc((100% - 1320px) / 2));
+  padding: 64px 32px;
+}
+
+.hero-copy {
+  flex: 0 1 420px;
 }
 
 .hero-copy h1 {
-  color: var(--lf-navy);
-  font-family: var(--lf-serif);
-  font-size: clamp(32px, 3.6vw, 48px);
-  font-weight: 700;
+  color: var(--lf-blue-dark);
+  font-size: clamp(28px, 4vw, 42px);
   line-height: 1.15;
-  margin: 0 0 20px;
-  text-wrap: balance;
-}
-
-/* Keeps "navigate them." together so the headline never leaves "them." alone
-   on its own line. */
-.nowrap {
-  white-space: nowrap;
+  margin: 0 0 16px;
 }
 
 .hero-copy p {
-  color: var(--lf-muted);
-  font-size: 17px;
+  color: var(--text-muted);
+  font-size: 16px;
   line-height: 1.6;
-  margin: 0 0 28px;
+  margin: 0 0 24px;
   max-width: 52ch;
 }
 
@@ -177,157 +175,34 @@
   border-color: var(--lf-blue);
 }
 
-/* Hero buttons: navy-filled primary, white secondary with a thin navy border.
-   Scoped so the CTA band button further down keeps its own look. */
-.hero-actions .btn {
-  align-items: center;
-  border-radius: 6px;
-  display: inline-flex;
-  font-family: inherit;
-  gap: 8px;
-  padding: 13px 22px;
-}
-
-.hero-actions .btn-primary {
-  background: var(--lf-navy);
-  color: white;
-}
-
-.hero-actions .btn-primary:hover {
-  background: #00234a;
-}
-
-.hero-actions .btn-secondary {
-  background: white;
-  border: 1px solid var(--lf-navy);
-  color: var(--lf-navy);
-}
-
-.hero-actions .btn-secondary:hover {
-  background: #f3f9fd;
-  border-color: var(--lf-navy);
-}
-
 .hero-art {
-  align-items: center;
+  flex: 1 1 500px;
   display: flex;
+  align-items: center;
   justify-content: center;
 }
 
 .hero-illustration {
-  color: var(--lf-navy);
-  display: block;
-  height: auto;
-  max-width: 600px;
+  max-width: min(840px, 100%);
   width: 100%;
+  height: auto;
 }
 
-/* Coral highlights on top of the navy line art. Stroke only, never filled. */
-.hero-illustration .accent {
-  stroke: var(--lf-coral);
-}
-
-/* --- Populärt cards --- */
-
-.popular {
+/* Full-width decorative brand illustration strip between the hero and the
+   product grid - purely visual, no interaction. */
+.brand-strip {
   background: white;
-  padding: 56px max(32px, calc((100% - 1320px) / 2)) 64px;
+  overflow: hidden;
+  padding: 8px 0 0;
 }
 
-.section-heading,
-.popular-grid,
-.welcome-section {
-  margin-left: auto;
-  margin-right: auto;
-  max-width: 1080px;
-}
-
-/* The Populärt block spans the same content width as the header and hero. */
-.popular .section-heading,
-.popular-grid {
-  max-width: none;
-}
-
-.section-heading {
-  margin-bottom: 28px;
-}
-
-.section-kicker {
-  color: var(--lf-red);
+.brand-strip img {
   display: block;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.section-heading h2,
-.welcome-section h2 {
-  color: var(--lf-blue-dark);
-  font-size: 28px;
-  margin: 5px 0 0;
-}
-
-.popular .section-heading h2 {
-  color: var(--lf-navy);
-  font-family: var(--lf-serif);
-  font-size: 32px;
-  font-weight: 700;
-  margin-top: 8px;
-}
-
-.popular-grid {
-  display: grid;
-  gap: 24px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.popular-card {
-  align-items: center;
-  background: white;
-  border: 1px solid var(--lf-border);
-  border-radius: 8px;
-  color: var(--lf-navy);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  justify-content: center;
-  min-height: 132px;
-  padding: 24px;
-  text-align: center;
-  text-decoration: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.popular-card:hover {
-  border-color: var(--lf-navy);
-  box-shadow: 0 6px 16px rgba(0, 47, 95, 0.1);
-}
-
-/* The glyphs are drawn with ~4px of padding inside their 48-unit box, so a
-   48px box gives a visible ~40px icon. */
-.card-icon {
-  height: 48px;
-  stroke-width: 1.75;
-  width: 48px;
-}
-
-.popular-card-title {
-  color: var(--lf-navy);
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.welcome-section {
-  padding: 64px 32px;
-  text-align: center;
-}
-
-.welcome-section p {
-  color: var(--text-muted);
-  line-height: 1.7;
-  margin: 14px auto 0;
-  max-width: 700px;
+  width: 100%;
+  height: auto;
+  max-height: 90px;
+  object-fit: cover;
+  object-position: center top;
 }
 
 .life-moments {
@@ -362,17 +237,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-size: 28px;
   gap: 8px;
   padding: 20px 12px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.moment-icon {
-  color: var(--lf-navy);
-  height: 36px;
-  stroke-width: 2;
-  width: 36px;
+.moment-card img {
+  height: 32px;
+  width: 32px;
 }
 
 .moment-card span {
@@ -387,30 +259,297 @@
   transform: translateY(-2px);
 }
 
-.products {
-  background: white;
+/* Product icon grid - the real homepage's primary "what do you need"
+   grid (Hemförsäkring/Bilförsäkring/... in the real site), positioned
+   right after the hero to match. Each card opens the chat pre-filled with
+   a prompt for that product, reusing the same [data-text] convention as
+   the life-moments cards below. */
+.product-grid-section {
+  background: var(--bg);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
+  padding: 56px 32px;
+  text-align: center;
+}
+
+.product-grid-section h2 {
+  color: var(--lf-blue-dark);
+  font-size: 24px;
+  margin: 0 0 6px;
+}
+
+.product-icon-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 28px auto 0;
+  max-width: 900px;
+}
+
+.product-icon-card {
+  align-items: center;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 12px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.product-icon-glyph {
+  height: 34px;
+  width: 34px;
+}
+
+.product-icon-card span:last-child {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.product-icon-card:hover {
+  border-color: var(--lf-blue);
+  box-shadow: 0 8px 20px rgba(9, 41, 68, 0.12);
+  transform: translateY(-2px);
+}
+
+/* "We're here for you" offer cards - generic, evergreen-style blurbs
+   (loyalty perks, a product upsell, a benefits reminder), deliberately NOT
+   real news content - this is a demo, not a live news feed. Emoji-on-
+   gradient placeholders stand in for photography this project doesn't
+   have real rights/assets to reproduce. */
+.offers-section {
+  padding: 56px 32px;
+  text-align: center;
+}
+
+.offers-section h2 {
+  color: var(--lf-blue-dark);
+  font-size: 24px;
+  margin: 0 0 28px;
+}
+
+.offer-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 auto;
+  max-width: 960px;
+  text-align: left;
+}
+
+.offer-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  display: block;
+  font-family: inherit;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.offer-card:hover {
+  border-color: var(--lf-blue);
+  box-shadow: 0 8px 20px rgba(9, 41, 68, 0.12);
+  transform: translateY(-2px);
+}
+
+.offer-card-art {
+  background: linear-gradient(135deg, #eef3f8, #cfe0ef);
+  display: block;
+  height: 120px;
+  object-fit: contain;
+  padding: 10px;
+  width: 100%;
+}
+
+.offer-tag {
+  color: var(--lf-blue);
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 14px 16px 4px;
+  text-transform: uppercase;
+}
+
+.offer-card h3 {
+  color: var(--lf-blue-dark);
+  font-size: 16px;
+  margin: 0 16px 8px;
+}
+
+.offer-card p {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0 16px 16px;
+}
+
+/* "Popular" quick-link row - most are chat prompts ([data-text] buttons,
+   same convention as everywhere else); "Tips & guides" is the one real
+   external link (LF Bergslagen's actual guides page), so it's a plain
+   anchor rather than a chat trigger. */
+.popular-section {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 56px 32px;
+}
+
+.popular-section h2 {
+  align-items: center;
+  color: var(--lf-blue-dark);
+  display: flex;
+  font-size: 24px;
+  gap: 8px;
+  justify-content: center;
+  margin: 0 auto 24px;
+  max-width: 900px;
+  text-align: center;
+}
+
+.popular-heading-icon {
+  height: 22px;
+  width: 22px;
+}
+
+.popular-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 auto;
+  max-width: 900px;
+}
+
+.popular-link {
+  align-items: center;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--lf-blue-dark);
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 600;
+  justify-content: space-between;
+  padding: 14px 16px;
+  text-decoration: none;
+}
+
+.popular-link:hover {
+  border-color: var(--lf-blue);
+}
+
+.popular-link-label {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.popular-link-icon {
+  height: 18px;
+  width: 18px;
+  flex-shrink: 0;
+}
+
+.popular-link-arrow {
+  color: var(--text-muted);
+}
+
+/* "Welcome" text block, standing in for the real site's advisor photo. */
+.welcome-section {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 32px;
-  padding: 48px max(32px, calc((100% - 1080px) / 2));
+  margin: 0 auto;
+  max-width: 960px;
+  padding: 56px 32px;
 }
 
-.product-col {
-  flex: 1 1 220px;
+.welcome-art {
+  background: linear-gradient(135deg, #eef3f8, #cfe0ef);
+  border-radius: 12px;
+  flex: 1 1 260px;
+  height: 220px;
+  object-fit: contain;
+  padding: 16px;
+  width: 100%;
 }
 
-.product-col h3 {
+.welcome-copy {
+  flex: 1 1 380px;
+}
+
+.welcome-copy h2 {
   color: var(--lf-blue-dark);
+  font-size: 24px;
   margin: 0 0 12px;
 }
 
-.product-col ul {
+.welcome-copy p {
   color: var(--text-muted);
-  line-height: 1.9;
+  font-size: 15px;
+  line-height: 1.6;
   margin: 0;
-  padding-left: 18px;
+}
+
+/* "Quick links" (Snabblänkar) - inert placeholders, same convention as the
+   footer's "About us" etc.: this demo doesn't have a real app/My
+   pages/BankID to link to. */
+.quick-links-section {
+  padding: 0 32px 56px;
+  text-align: center;
+}
+
+.quick-links-section h2 {
+  color: var(--lf-blue-dark);
+  font-size: 20px;
+  margin: 0 0 16px;
+}
+
+.quick-links-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 auto;
+  max-width: 700px;
+}
+
+.quick-link {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--lf-blue-dark);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 14px;
+  text-decoration: none;
+}
+
+.quick-link:hover {
+  border-color: var(--lf-blue);
+}
+
+@media (max-width: 720px) {
+  .product-icon-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .offer-grid,
+  .popular-grid,
+  .quick-links-grid {
+    grid-template-columns: 1fr;
+  }
+  .footer-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .cta-band {
@@ -444,48 +583,113 @@
 }
 
 .site-footer {
+  background: white;
+  border-top: 1px solid var(--border);
+  color: var(--text-main);
+  overflow: hidden;
+  padding: 0 32px 24px;
+}
+
+/* Same decorative brand strip as the one under the hero, reused here to
+   match the real site's footer, which opens on this illustration before
+   the link columns. */
+.footer-illustration {
+  margin: 0 -32px 28px;
+}
+
+.footer-illustration img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 170px;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.footer-top {
   align-items: center;
-  background: #eef3f8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.footer-cols {
+  display: grid;
+  gap: 32px 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 24px;
+}
+
+.footer-blurb {
   color: var(--text-muted);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: 12px;
-  gap: 18px 32px;
-  justify-content: space-between;
-  padding: 22px 32px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0;
+  max-width: 32ch;
 }
 
-.footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-}
-
-.footer-links a {
+.footer-cols strong {
   color: var(--lf-blue-dark);
-  text-decoration: none;
+  display: block;
+  font-size: 14.5px;
+  margin-bottom: 10px;
 }
 
-.footer-links a:hover {
+.footer-cols a,
+.footer-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: block;
+  font-family: inherit;
+  font-size: 13.5px;
+  margin-bottom: 8px;
+  padding: 0;
+  text-align: left;
+  text-decoration: none;
+  width: 100%;
+}
+
+.footer-cols a:hover,
+.footer-link:hover {
   color: var(--lf-blue);
+}
+
+.footer-disclaimer {
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0;
+  padding-top: 16px;
 }
 
 /* --- Floating chat widget (embeds the real chat app in an iframe) --- */
 
 .chat-widget-fab {
-  background: var(--lf-blue);
+  align-items: center;
+  background: white;
   border: none;
   border-radius: 50%;
   bottom: 24px;
   box-shadow: 0 10px 24px rgba(9, 41, 68, 0.3);
-  color: white;
   cursor: pointer;
-  font-size: 26px;
+  display: flex;
   height: 60px;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
   position: fixed;
   right: 24px;
   width: 60px;
   z-index: 999;
+}
+
+.chat-widget-fab img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .chat-widget-fab:hover {
@@ -578,28 +782,6 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
-/* Compact (small bubble) size only: the embedded chat draws its own compact
-   header (icon, "Sara · AI assistant", EN/SV, "Prata med en person" -- see
-   body.widget-compact in style.css), so this bar drops its duplicate title
-   and shrinks to just the window buttons, overlaid in the top-right corner.
-   Expanded and full-screen keep the normal bar above. */
-.chat-widget:not(.expanded):not(.fullscreen) .chat-widget-header {
-  background: none;
-  padding: 8px;
-  position: absolute;
-  right: 0;
-  top: 0;
-  z-index: 1;
-}
-
-.chat-widget:not(.expanded):not(.fullscreen) .chat-widget-header > span {
-  display: none;
-}
-
-.chat-widget:not(.expanded):not(.fullscreen) .chat-widget-header button {
-  padding: 4px 6px;
-}
-
 .chat-widget-frame {
   border: none;
   flex: 1;
@@ -607,88 +789,11 @@
   width: 100%;
 }
 
-/* The header (natural-size 277px logo, nav, tools, chat pill) is wide, so it
-   sheds items progressively: tighter spacing, then no nav, then icon-only
-   tools. */
-@media (max-width: 1320px) {
-  .site-nav {
-    gap: 20px;
-  }
-
-  .site-links {
-    gap: 18px;
-  }
-
-  .site-tools {
-    gap: 20px;
-  }
-}
-
-@media (max-width: 1120px) {
-  .site-links {
-    display: none;
-  }
-
-  .site-tools {
-    margin-left: auto;
-  }
-}
-
-@media (max-width: 900px) {
-  .hero {
-    grid-template-columns: 1fr;
-    padding: 40px 24px;
-  }
-
-  .popular-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 720px) {
-  .site-tool span {
-    display: none;
-  }
-
-  .site-logo img {
-    width: 200px;
-  }
-}
-
 @media (max-width: 520px) {
-  .site-nav {
-    gap: 12px;
-    padding: 10px 16px;
+  .site-icon-links {
+    gap: 14px;
   }
-
-  .site-logo img {
-    width: 140px;
-  }
-
-  .site-tools {
-    gap: 16px;
-  }
-
-  .popular-grid {
-    gap: 12px;
-  }
-
-  .popular-card {
-    padding: 16px 12px;
-  }
-
-  .hero,
-  .popular,
-  .welcome-section,
-  .products,
-  .cta-band,
-  .site-footer {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-
-  .site-footer {
-    align-items: flex-start;
-    flex-direction: column;
+  .site-icon-link span:last-child {
+    display: none;
   }
 }
