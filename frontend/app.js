@@ -1380,7 +1380,7 @@ function addForm(form) {
     submitBtn.remove();
   }
 
-  async function saveForm() {
+  async function saveForm(caseId) {
     if (formSaved) return;
     formSaved = true;
     try {
@@ -1390,6 +1390,7 @@ function addForm(form) {
         body: JSON.stringify({
           session_id: sessionId,
           title: form.title || "Insurance application",
+          case_id: caseId,
           fields: form.fields.map((f) => ({
             name: f.name,
             label: f.label,
@@ -1431,11 +1432,11 @@ function addForm(form) {
     get submitted() {
       return formSubmitted;
     },
-    markSubmitted() {
+    markSubmitted(caseId) {
       if (formSubmitted) return;
       formSubmitted = true;
       renderSummary();
-      saveForm();
+      saveForm(caseId);
     },
     markEditable() {
       if (!formSubmitted) return;
@@ -1826,12 +1827,15 @@ async function getAssistantReply() {
     upsertChatListEntry();
     // The auth card is the interaction; its BankID chip would just duplicate it.
     addSuggestions(data.form?.type === "auth_choice" ? [] : data.suggestions, data.human_chat_option);
-    if (activeForm && !activeForm.submitted && FORM_CONFIRM_REPLY_RE.test(data.content)) {
-      // The backend forces a tool call on the first round of every turn, which
-      // sometimes makes it re-invoke fill_customer_form on this very
-      // confirmation turn even though nothing changed -- treat the reply as
-      // the confirmation it is instead of popping up a duplicate form.
-      activeForm.markSubmitted();
+    if (activeForm && !activeForm.submitted && (data.case_id || FORM_CONFIRM_REPLY_RE.test(data.content))) {
+      // A case ID in the reply is the reliable sign the application was
+      // submitted - the confirmation wording varies too much for the regexes
+      // alone (kept as a fallback). The backend also forces a tool call on the
+      // first round of every turn, which sometimes makes it re-invoke
+      // fill_customer_form on this very confirmation turn even though nothing
+      // changed -- treat the reply as the confirmation it is instead of
+      // popping up a duplicate form.
+      activeForm.markSubmitted(data.case_id);
     } else {
       renderForm(data.form);
     }

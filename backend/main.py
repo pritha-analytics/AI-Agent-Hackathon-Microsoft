@@ -164,6 +164,7 @@ class SaveFormRequest(BaseModel):
     session_id: str
     title: str
     fields: list[dict]
+    case_id: str | None = None
 
 
 class CreatePlanRequest(BaseModel):
@@ -214,6 +215,9 @@ def chat(req: ChatRequest) -> dict:
         # Documents are always attached BEFORE a case exists in every
         # current flow, so this is the first point case_id is known.
         db.link_session_documents_to_case(req.session_id, case_id)
+        # Same idea for the submitted form: it was saved before this case
+        # existed, so stamp the ID onto it now (see forms_store).
+        forms_store.link_session_forms_to_case(req.session_id, case_id)
         # Auto check-off: a just-created case answers one of the sidebar
         # checklist's own questions, so tick it without waiting for the
         # customer to separately say "I've done that" (see plans.mark_task_done).
@@ -278,6 +282,7 @@ def chat(req: ChatRequest) -> dict:
         "content": reply,
         "suggestions": suggestions,
         "plan_updates": completed_plan_tasks,
+        "case_id": case_id,
         **extra,
     }
 
@@ -528,7 +533,7 @@ def get_audit_trail(customer_id: str) -> dict:
 
 @app.post("/api/forms")
 def create_form(body: SaveFormRequest) -> dict:
-    form_id = forms_store.save_form(body.session_id, body.title, body.fields)
+    form_id = forms_store.save_form(body.session_id, body.title, body.fields, body.case_id)
     return {"id": form_id, "url": f"/forms/{form_id}"}
 
 
@@ -560,6 +565,7 @@ def _forms_list_page() -> str:
             f"""
             <tr>
                 <td class="ts">{html.escape(_format_timestamp(f["created_at"]))}</td>
+                <td class="id-cell">{html.escape(f.get("case_id") or "—")}</td>
                 <td class="id-cell"><a class="id-link" href="/forms/{html.escape(f["id"])}">{html.escape(f["id"])}</a></td>
                 <td>{html.escape(f["title"])}</td>
                 <td><a class="link" href="/forms/{html.escape(f["id"])}">Öppna &rarr;</a></td>
@@ -570,7 +576,7 @@ def _forms_list_page() -> str:
         body = f"""
         <table>
             <thead>
-                <tr><th>Datum</th><th>Form ID</th><th>Ansökan</th><th></th></tr>
+                <tr><th>Datum</th><th>Case ID</th><th>Form ID</th><th>Ansökan</th><th></th></tr>
             </thead>
             <tbody>
                 {rows}

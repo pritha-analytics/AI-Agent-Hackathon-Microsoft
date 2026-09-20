@@ -15,7 +15,7 @@ from pathlib import Path
 FORMS_DIR = Path(__file__).resolve().parent / "data" / "forms"
 
 
-def save_form(session_id: str, title: str, fields: list[dict]) -> str:
+def save_form(session_id: str, title: str, fields: list[dict], case_id: str | None = None) -> str:
     FORMS_DIR.mkdir(parents=True, exist_ok=True)
 
     form_id = uuid.uuid4().hex[:12]
@@ -24,6 +24,7 @@ def save_form(session_id: str, title: str, fields: list[dict]) -> str:
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "session_id": session_id,
         "title": title,
+        "case_id": case_id,
         "fields": fields,
     }
 
@@ -32,6 +33,25 @@ def save_form(session_id: str, title: str, fields: list[dict]) -> str:
         json.dump(form, f, ensure_ascii=False, indent=2)
 
     return form_id
+
+
+def link_session_forms_to_case(session_id: str, case_id: str) -> None:
+    """Backfills case_id onto this session's forms that don't have one yet.
+    A form is saved the moment the customer submits it, in parallel with the
+    chat turn that creates the case, so the ID usually doesn't exist yet at
+    save time - /api/chat calls this once it sees a fresh CASE-###### in the
+    reply (same pattern as db.link_session_documents_to_case)."""
+    if not FORMS_DIR.exists():
+        return
+
+    for form_path in FORMS_DIR.glob("*.json"):
+        with form_path.open("r", encoding="utf-8") as f:
+            form = json.load(f)
+        if form.get("session_id") != session_id or form.get("case_id"):
+            continue
+        form["case_id"] = case_id
+        with form_path.open("w", encoding="utf-8") as f:
+            json.dump(form, f, ensure_ascii=False, indent=2)
 
 
 def get_form(form_id: str) -> dict | None:
@@ -58,6 +78,7 @@ def list_forms() -> list[dict]:
                 "created_at": form["created_at"],
                 "title": form["title"],
                 "session_id": form["session_id"],
+                "case_id": form.get("case_id"),
             }
         )
 
